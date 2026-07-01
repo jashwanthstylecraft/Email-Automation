@@ -1,0 +1,329 @@
+'use client';
+
+import React, { useEffect } from 'react';
+import { useStore } from '@/lib/store';
+import {
+  Mail, Send, Clock, AlertTriangle, Sliders, Sparkles, ArrowRight, Activity, Edit3, MessageSquare, ShieldCheck,
+  WifiOff, RefreshCw
+} from 'lucide-react';
+import Link from 'next/link';
+import {
+  EmailsPerDayChart, CategoriesChart, SentimentChart
+} from '@/components/dashboard-charts';
+
+const POLL_INTERVAL_MS = 15000;
+
+export default function DashboardPage() {
+  const {
+    dashboardMetrics, dashboardCharts, recentActivity,
+    fetchDashboard, user, isDashboardLoading, isDashboardRefreshing, dashboardError, dashboardUpdatedAt
+  } = useStore();
+
+  useEffect(() => {
+    fetchDashboard();
+
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchDashboard({ silent: true });
+      }
+    }, POLL_INTERVAL_MS);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDashboard({ silent: true });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  if (isDashboardLoading || !dashboardMetrics) {
+    return (
+      <div className="space-y-8 animate-pulse text-xs">
+        <div className="h-8 bg-white/5 rounded-lg w-1/4"></div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="glass-panel h-24 rounded-xl"></div>
+          ))}
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="glass-panel h-80 rounded-xl lg:col-span-2"></div>
+          <div className="glass-panel h-80 rounded-xl"></div>
+        </div>
+      </div>
+    );
+  }
+
+  const kpis = [
+    {
+      title: 'Emails Processed',
+      value: dashboardMetrics.totalEmails,
+      icon: Mail,
+      color: 'text-blue-400',
+      bg: 'bg-blue-500/10 border-blue-500/20',
+    },
+    {
+      title: 'Drafts Generated',
+      value: dashboardMetrics.draftsCreated || 0,
+      icon: Edit3,
+      color: 'text-violet-300',
+      bg: 'bg-violet-500/10 border-violet-500/20',
+    },
+    {
+      title: 'Replies Sent',
+      value: dashboardMetrics.autoRepliesSent,
+      icon: Send,
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-500/10 border-emerald-500/20',
+    },
+    {
+      title: 'Manual Review Count',
+      value: dashboardMetrics.pendingEmails,
+      icon: Clock,
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10 border-amber-500/20',
+    },
+    {
+      title: 'Failed Matches',
+      value: dashboardMetrics.failedAttempts,
+      icon: AlertTriangle,
+      color: 'text-red-400',
+      bg: 'bg-red-500/10 border-red-500/20',
+    },
+    {
+      title: 'Active Rules',
+      value: dashboardMetrics.activeRulesCount,
+      icon: Sliders,
+      color: 'text-violet-400',
+      bg: 'bg-violet-500/10 border-violet-500/20',
+    },
+  ];
+
+  const subMetrics = [
+    { name: 'Template Match Accuracy', value: dashboardMetrics.templateMatchAccuracy || '100%', icon: ShieldCheck },
+    { name: 'User Feedback Count', value: dashboardMetrics.userFeedbackCount || 0, icon: MessageSquare },
+    { name: 'AI Average Confidence', value: dashboardMetrics.avgConfidence, icon: Sparkles },
+    { name: 'Automation Success Rate', value: dashboardMetrics.automationRate, icon: Sliders },
+    { name: 'Last Matched Keyword', value: dashboardMetrics.lastMatchedKeyword || 'None yet', icon: Sliders },
+  ];
+
+  const isDataEmpty = dashboardMetrics.totalEmails === 0;
+
+  return (
+    <div className="space-y-8 pb-12 text-xs">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            Dashboard Overview
+          </h1>
+          <p className="text-gray-400 text-xs mt-1">
+            Monitor real StyleCraft US email sync and auto-reply dispatcher performance.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 text-[10px] text-gray-500">
+          {isDashboardRefreshing ? (
+            <RefreshCw className="w-3 h-3 text-violet-400 animate-spin" />
+          ) : (
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+          )}
+          <span>
+            {isDashboardRefreshing
+              ? 'Updating…'
+              : dashboardUpdatedAt
+                ? `Live · Updated ${new Date(dashboardUpdatedAt).toLocaleTimeString()}`
+                : 'Live'}
+          </span>
+        </div>
+      </div>
+
+      {dashboardError && (
+        <div className="glass-panel border border-amber-500/20 bg-amber-500/5 rounded-xl p-3 flex items-center gap-3 text-amber-300">
+          <WifiOff className="w-4 h-4 flex-shrink-0" />
+          <p className="text-xs">
+            {dashboardError} Showing last synced data — retrying automatically.
+          </p>
+        </div>
+      )}
+
+      {/* Primary KPIs */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        {kpis.map((kpi) => {
+          const Icon = kpi.icon;
+          return (
+            <div key={kpi.title} className="glass-panel p-4 rounded-xl border border-white/5 relative overflow-hidden flex flex-col justify-between bg-[#0b0b0f]/60">
+              <div className="flex justify-between items-start">
+                <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider leading-relaxed">{kpi.title}</p>
+                <div className={`p-1.5 rounded-lg border ${kpi.bg}`}>
+                  <Icon className={`w-3.5 h-3.5 ${kpi.color}`} />
+                </div>
+              </div>
+              <div className="mt-3">
+                <h3 className="text-xl font-bold tracking-tight text-white">{kpi.value}</h3>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Sub-Metrics & Trends */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {subMetrics.map((sm) => {
+          const Icon = sm.icon;
+          return (
+            <div key={sm.name} className="glass-panel p-4 rounded-xl border border-white/5 flex items-center justify-between bg-[#0b0b0f]/60">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/5 rounded-lg">
+                  <Icon className="w-4 h-4 text-violet-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">{sm.name}</p>
+                  <p className="text-xs font-semibold text-white mt-0.5">{sm.value}</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {isDataEmpty ? (
+        <div className="glass-panel py-20 px-6 text-center border border-white/5 rounded-2xl flex flex-col items-center justify-center bg-[#0b0b0f]/60">
+          <div className="p-4 rounded-full bg-violet-600/10 border border-violet-500/20 mb-4 animate-pulse">
+            <Mail className="w-8 h-8 text-violet-400" />
+          </div>
+          <h3 className="text-sm font-bold text-gray-200">No real data available yet</h3>
+          <p className="text-xs text-gray-500 mt-2 max-w-md mx-auto leading-relaxed">
+            Please configure your IMAP/SMTP server connection on the settings page or upload responses.docx to bootstrap templates.
+          </p>
+          <div className="mt-6">
+            <Link 
+              href="/settings" 
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-xs font-semibold rounded-lg text-white transition-all shadow-lg shadow-violet-600/15"
+            >
+              Go to Settings
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Charts Panel */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="glass-panel p-6 rounded-xl border border-white/5 lg:col-span-2 bg-[#0b0b0f]/60">
+              <h3 className="text-sm font-semibold text-gray-300 mb-6">Real Emails & Auto replies (Last 7 Days)</h3>
+              <EmailsPerDayChart data={dashboardCharts.emailsPerDay} />
+            </div>
+
+            <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60">
+              <h3 className="text-sm font-semibold text-gray-300 mb-6">Inquiry Categories</h3>
+              <CategoriesChart data={dashboardCharts.categories} />
+            </div>
+          </div>
+
+          {/* Second Row: Sentiment & Recent Activity */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left lists: Keywords, Sentiment, and Most Used Templates */}
+            <div className="space-y-6">
+              <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60">
+                <h3 className="text-sm font-semibold text-gray-300 mb-6">Customer Sentiment</h3>
+                <SentimentChart data={dashboardCharts.sentiment} />
+              </div>
+
+              <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60 space-y-4">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-violet-400" />
+                  Most Used Response Templates
+                </h3>
+                {(!dashboardMetrics.mostUsedTemplates || dashboardMetrics.mostUsedTemplates.length === 0) ? (
+                  <p className="text-gray-500 text-[10px] py-4 text-center">No template dispatches logged yet.</p>
+                ) : (
+                  <div className="space-y-2 font-mono text-[10px]">
+                    {dashboardMetrics.mostUsedTemplates.map((item: any) => (
+                      <div key={item.name} className="flex justify-between items-center bg-white/5 p-2.5 rounded border border-white/5">
+                        <span className="text-violet-300 font-semibold truncate max-w-[70%]">{item.name}</span>
+                        <span className="px-2 py-0.5 rounded bg-emerald-600/10 border border-emerald-500/20 text-emerald-400 font-bold">{item.count} sent</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60 space-y-4">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-violet-400" />
+                  Top Matched Keywords
+                </h3>
+                {(!dashboardMetrics.topMatchedKeywords || dashboardMetrics.topMatchedKeywords.length === 0) ? (
+                  <p className="text-gray-500 text-[10px] py-4 text-center">No keyword triggers logged yet.</p>
+                ) : (
+                  <div className="space-y-2 font-mono text-[10px]">
+                    {dashboardMetrics.topMatchedKeywords.map((item: any) => (
+                      <div key={item.name} className="flex justify-between items-center bg-white/5 p-2.5 rounded border border-white/5">
+                        <span className="text-violet-300 font-semibold">{item.name}</span>
+                        <span className="px-2 py-0.5 rounded bg-violet-600/10 border border-violet-500/20 text-violet-400 font-bold">{item.count} hits</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Recent Activities */}
+            <div className="glass-panel p-6 rounded-xl border border-white/5 lg:col-span-2 bg-[#0b0b0f]/60">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-sm font-semibold text-gray-300">Recent Inbox Activity</h3>
+                <Link href="/inbox" className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
+                  View Entire Inbox →
+                </Link>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-white/5 text-[11px] text-gray-400 uppercase tracking-wider font-semibold">
+                      <th className="pb-3">Sender</th>
+                      <th className="pb-3">Subject</th>
+                      <th className="pb-3">Category</th>
+                      <th className="pb-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-xs text-gray-300">
+                    {recentActivity.map((act) => {
+                      const statusColors = {
+                        UNREAD: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+                        WAITING: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+                        REPLIED: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+                        ESCALATED: 'bg-red-500/10 border-red-500/20 text-red-400',
+                        SPAM: 'bg-gray-500/10 border-gray-500/20 text-gray-400',
+                      };
+                      return (
+                        <tr key={act.id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-3 pr-4 truncate font-medium text-white max-w-[120px]">{act.sender}</td>
+                          <td className="py-3 pr-4 truncate max-w-[200px]">{act.subject}</td>
+                          <td className="py-3 pr-4">{act.category}</td>
+                          <td className="py-3">
+                            <span className={`px-2 py-0.5 rounded border text-[10px] font-medium ${(statusColors as any)[act.status]}`}>
+                              {act.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

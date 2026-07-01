@@ -1,0 +1,36 @@
+- [x] Refactor AI pipeline (`ai-pipeline.ts`) to match emails to database templates instead of drafting from scratch
+- [x] Configure LLM structured analysis prompt for language, category, sentiment, template matching, and confidence score
+- [x] Build local deterministic keyword matcher fallback when API keys are missing or confidence is low
+- [x] Integrate intent examples (warranty, return, lost package, blade hot, switch fix, xcell troubleshoot, collab, wholesale) in seeded templates list
+- [x] Implement confidence routing rules: auto-drafting (>=85%), needs-review (60-84%), and manual-review (<60%)
+- [x] Handle rule matching conflicts (multiple matches) by routing to WAITING queue and logging conflicts
+- [x] Add active/inactive status field to templates model in database schema
+- [x] Update Reply Templates page to display toggle states, edit keywords, and run keyword test simulators
+- [x] Expand Automation Rules page form to configure confidence parameters, auto-draft, auto-send, and fallback checkboxes
+- [x] Build template overrides select box and template body updater button in Manual Review inbox pane
+- [x] Add draftsCreated count, topMatchedKeywords logs query, and KPIs grid to dashboard
+- [x] Implement dynamic template matcher on email detail loading (`/api/inbox/[id]`) to instantly overwrite legacy fallback messages
+- [x] Re-architect mock sync service templates with realistic StyleCraft customer query scenarios
+- [x] Enable automatic mock sync fallback when live email keys are not configured
+- [x] Run database clear data script to delete all historical emails, replies, and logs for a clean queue start
+- [x] Implement wrapResponseWithGreetingAndClosing to wrap matched template replies with polite greetings and regards signature
+- [x] Integrate wrapper format check into live sync, mock sync, legacy dynamic matching, and frontend manual assign
+- [x] Redesign layout sidebar logo header with premium "StyleCraft Email Automation" text styling
+- [x] Apply hover animations, rotating mail icons, and glowing shadows around logo components
+- [x] Synchronize wrapResponseWithGreetingAndClosing with custom greetings and regards signatures configured on the Settings page
+- [x] Implement expandTemplateWithAI to dynamically write professional, contextually expanded email drafts based on customer email details
+- [x] Refactor closing signature check to prevent false positives from intermediate body words (such as "Thanks" or "Thank you")
+- [x] Fix Gemini endpoint API calls by updating the model ID to stable `gemini-1.5-flash`
+- [x] Create localMockExpandTemplate rules engine to expand short template bodies with context when LLM API keys are absent
+- [x] Implement AI Learning Layer with `LearningLog` SQLite database table model to track user overrides, keywords, and approved matches
+- [x] Build detailed AI Metadata display panel inside the manual review inbox workstation
+- [x] Implement Top 3 Suggested templates layout inside manual review workstation with one-click re-assignment
+- [x] Add user feedback action console buttons (Correct, Wrong, Better template, Disable rule) and keyword submission forms
+- [x] Add templateMatchAccuracy, userFeedbackCount, and mostUsedTemplates analytics metrics to backend and dashboard views
+- [x] Add internal notes column to database template model and render on template lists
+- [x] Refactor keyword matcher algorithm in `src/lib/ai-pipeline.ts` to utilize case-insensitive regex word boundary rules (`\b`) to solve substring match collisions (such as "ra" inside "transit")
+- [x] Render Chosen Template name directly inside the AI Response Draft title header bar in the inbox review workstation
+- [x] Extract template matching keywords directly from related database `Rule` conditions list, fixing the variables lookup collision bug
+- [x] Restore "Manual Override" dropdown select menu inside the Suggested Templates panel in inbox review workstation
+- [x] Fix draft assignment button updates and eliminate fetch racing latency inside `handleAssignTemplate` using direct local overrides state
+- [x] Verify compile checks and unit tests run successfully

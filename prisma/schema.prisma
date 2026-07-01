@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  passwordHash   String
+  name           String
+  role           String       @default("Viewer") // Owner, Admin, Support Agent, Viewer
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Organization {
+  id           String        @id @default(uuid())
+  name         String
+  users        User[]
+  inboxes      Inbox[]
+  emails       Email[]
+  rules        Rule[]
+  documents    Document[]
+  templates    Template[]
+  integrations Integration[]
+  settings     Settings?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Settings {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  systemPrompt   String       @default("You are a helpful customer support agent...")
+  tone           String       @default("Professional") // Friendly, Formal, Sales, Technical, Support
+  greeting       String       @default("Hello,")
+  closing        String       @default("Regards,\nSupport Team")
+  autoReplyMode  String       @default("DRAFT") // AUTO (Fully Automatic), DRAFT (AI Draft -> Human Approval), MANUAL (Manual Only)
+  confidenceThreshold Float @default(0.8)
+  geminiApiKey   String?
+  openaiApiKey   String?
+}
+
+model Inbox {
+  id             String       @id @default(uuid())
+  name           String
+  emailAddress   String       @unique
+  provider       String       // GMAIL, OUTLOOK, IMAP
+  credentials    String       // Encrypted OAuth tokens or connection settings
+  status         String       @default("CONNECTED") // CONNECTED, DISCONNECTED, ERROR
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Email {
+  id              String       @id @default(uuid())
+  externalId      String?      // Provider email ID
+  sender          String
+  recipient       String
+  subject         String
+  body            String
+  preview         String
+  status          String       @default("UNREAD") // UNREAD, WAITING, REPLIED, ESCALATED, SPAM
+  priority        String       @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  sentiment       String       @default("NEUTRAL") // POSITIVE, NEUTRAL, NEGATIVE, ANGRY
+  category        String       @default("General Inquiry") // Sales, Support, Billing, Refund, Complaint, Technical, HR, etc.
+  language        String       @default("en")
+  aiConfidence    Float        @default(0.0)
+  spam            Boolean      @default(false)
+  duplicate       Boolean      @default(false)
+  urgency         String       @default("MEDIUM") // LOW, MEDIUM, HIGH
+  summary         String?      // AI-generated brief summary
+  matchedTemplateId String?    // AI-matched template ID
+  aiProvider      String?      // Gemini or OpenAI
+  userFeedback    String?      // Correct Template, Wrong Template, Better Template Exists, etc.
+  userFeedbackNotes String?    // user notes / added keywords
+  assignedUserId  String?
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  autoReplies     AutoReply[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model AutoReply {
+  id           String    @id @default(uuid())
+  emailId      String
+  email        Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  status       String    @default("DRAFT") // DRAFT, PENDING_APPROVAL, SENT, REJECTED
+  responseBody String
+  sentAt       DateTime?
+  approvedBy   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Rule {
+  id             String       @id @default(uuid())
+  name           String
+  conditions     String       // Serialized JSON containing: category, priority, sentiment, keywords, etc.
+  actions        String       // Serialized JSON containing: auto_reply, template_id, assign_to, escalate, status
+  active         Boolean      @default(true)
+  triggerCount   Int          @default(0)
+  lastTriggeredAt DateTime?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Document {
+  id             String       @id @default(uuid())
+  title          String
+  content        String
+  fileType       String       // PDF, DOCX, TXT, MD
+  fileSize       Int
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Template {
+  id             String       @id @default(uuid())
+  name           String
+  subject        String
+  body           String
+  variables      String       // Comma separated list of variables like: {{customer_name}}, {{ticket_id}}
+  active         Boolean      @default(true)
+  notes          String?      // Admin internal notes
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Integration {
+  id             String       @id @default(uuid())
+  type           String       // SLACK, TEAMS, DISCORD, WEBHOOK
+  config         String       // Serialized JSON credentials / webhook URLs
+  active         Boolean      @default(true)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model AuditLog {
+  id             String    @id @default(uuid())
+  action         String
+  userId         String?
+  details        String
+  createdAt      DateTime  @default(now())
+}
+
+model LearningLog {
+  id               String   @id @default(uuid())
+  emailId          String?
+  subject          String?
+  sender           String?
+  emailText        String
+  aiSelectedTmpl   String?
+  userApprovedTmpl String?
+  rejectedTmpl     String?
+  keywordsAdded    String?
+  confidenceScore  Float
+  finalResponse    String
+  feedbackClicked  String?
+  createdAt        DateTime @default(now())
+}

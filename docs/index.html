@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>StyleCraft — AI Email Automation</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: #08080a;
+    color: #e5e5ea;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 64px 24px 96px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: #a78bfa; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.25);
+    padding: 6px 12px; border-radius: 999px; margin-bottom: 20px;
+  }
+  h1 { font-size: 2.1rem; margin: 0 0 12px; letter-spacing: -0.02em; }
+  .sub { color: #9ca3af; font-size: 1rem; max-width: 640px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 40px 0; }
+  .card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px; padding: 20px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 0.95rem; color: #fff; }
+  .card p { margin: 0; font-size: 0.85rem; color: #9ca3af; }
+  .notice {
+    border: 1px solid rgba(245,158,11,0.25); background: rgba(245,158,11,0.06);
+    color: #fbbf24; border-radius: 12px; padding: 16px 20px; font-size: 0.85rem; margin: 32px 0;
+  }
+  a.btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #7c3aed; color: #fff; text-decoration: none;
+    padding: 10px 18px; border-radius: 10px; font-size: 0.9rem; font-weight: 600;
+    margin-top: 8px;
+  }
+  a.btn:hover { background: #6d28d9; }
+  code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+  footer { margin-top: 56px; color: #4b5563; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <span class="badge">● Project overview</span>
+    <h1>StyleCraft — AI Email Automation</h1>
+    <p class="sub">
+      A full-stack support-inbox automation platform: AI email classification, a local RAG
+      knowledge pipeline, a visual rule builder, and human-in-the-loop auto-reply dispatch.
+    </p>
+
+    <div class="notice">
+      This page is a static landing page only. The actual application is a Next.js
+      full-stack app with server-side API routes, a Prisma/SQLite database, IMAP/SMTP
+      integrations, and LLM calls — it requires a real Node.js server and cannot run on
+      GitHub Pages. Clone the repo and run it locally, or deploy it to a Node-capable
+      host (Vercel, Render, Railway, or the included Docker image).
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>AI Processing Pipeline</h3>
+        <p>Language detection, category tagging, sentiment, urgency, spam and duplicate checks.</p>
+      </div>
+      <div class="card">
+        <h3>Local RAG Service</h3>
+        <p>Token-overlap and TF-IDF matching against uploaded knowledge base documents.</p>
+      </div>
+      <div class="card">
+        <h3>Visual Rule Builder</h3>
+        <p>Conditional automation rules that route, template-match, and escalate emails.</p>
+      </div>
+      <div class="card">
+        <h3>Human Approval Flow</h3>
+        <p>Fully automatic, draft-for-approval, or fully manual reply dispatch modes.</p>
+      </div>
+    </div>
+
+    <h3>Run it locally</h3>
+    <pre style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; overflow-x:auto; font-size:0.85rem;"><code>npm install
+npx prisma generate
+npx prisma db push
+npx tsx prisma/seed.ts
+npm run dev</code></pre>
+
+    <a class="btn" href="https://github.com/dasarijashwanth/stylecraft-email-automation">View source on GitHub →</a>
+
+    <footer>StyleCraft Email Automation · built with Next.js, Prisma, and Tailwind CSS</footer>
+  </div>
+</body>
+</html>
