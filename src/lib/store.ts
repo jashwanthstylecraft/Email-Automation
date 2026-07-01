@@ -70,6 +70,7 @@ export interface Template {
   subject: string;
   body: string;
   variables: string;
+  keywords?: string;
   active?: boolean;
   notes?: string | null;
 }

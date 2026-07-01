@@ -7,6 +7,7 @@ import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame, Ban,
   Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper
 } from 'lucide-react';
+import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
 
 export default function InboxPage() {
   const {
@@ -270,98 +271,40 @@ export default function InboxPage() {
 
   const currentlyMatchedTemplateName = overrideTemplateName || (matchedTemplate ? matchedTemplate.name : 'None');
 
-  // Filter out placeholder interpolation names (customer_name, closing, etc.)
-  // so this only shows real trigger keywords, not template variables.
-  const PLACEHOLDER_NAMES = new Set(['customer_name', 'closing', 'ticket_id', 'order_number', 'rma_number']);
-  const matchedTemplateKeywords = (matchedTemplate?.variables || '')
-    .split(',')
-    .map(k => k.trim())
-    .filter(k => k && !PLACEHOLDER_NAMES.has(k.toLowerCase()));
+  // The specific keywords that actually fired for THIS email, not just the
+  // template's whole keyword set — recomputed client-side from the same
+  // structured keywords used server-side, since that per-match detail
+  // isn't persisted on the Email record itself.
+  const matchedTemplateKeywords = (() => {
+    if (!matchedTemplate || !selectedEmail) return [];
+    const scored = matchTemplates(
+      [{ id: matchedTemplate.id, name: matchedTemplate.name, active: matchedTemplate.active, keywords: parseKeywords(matchedTemplate.keywords) }],
+      selectedEmail.subject,
+      selectedEmail.body
+    );
+    return scored.matchedTemplateId ? scored.matchedTerms : [];
+  })();
 
-  // Get Top 3 Suggested templates dynamically based on email content text similarity
+  // Get Top 3 Suggested templates using the same structured scoring engine
+  // that decides real incoming-email matches, so this panel honestly
+  // reflects what the automated pipeline would actually choose.
   const getSuggestions = () => {
     if (!selectedEmail) return [];
-    
-    const emailText = (selectedEmail.subject + ' ' + selectedEmail.body).toLowerCase();
-    const scoredList: { id: string; name: string; score: number; reason: string }[] = [];
-    const stopwords = new Set(['and', 'the', 'for', 'with', 'your', 'about', 'this', 'that', 'from', 'have', 'been', 'will', 'are', 'not', 'but', 'out']);
 
-    for (const t of templates) {
-      if (t.active === false) continue;
-      
-      let score = 0;
-      let matchedKeyword = '';
+    const scoringInputs: TemplateForScoring[] = templates.map(t => ({
+      id: t.id,
+      name: t.name,
+      active: t.active,
+      keywords: parseKeywords(t.keywords),
+    }));
 
-      // Collect keywords from tags and title
-      const keywords: string[] = [];
-      if (t.variables) {
-        keywords.push(...t.variables.split(',').map(v => v.trim().toLowerCase()).filter(Boolean));
-      }
-      keywords.push(t.name.toLowerCase().trim());
-
-      for (const kw of keywords) {
-        if (kw.length < 3) continue;
-
-        // 1. Verbatim match
-        if (emailText.includes(kw)) {
-          const currentScore = kw.length * 10;
-          if (currentScore > score) {
-            score = currentScore;
-            matchedKeyword = kw;
-          }
-        } else {
-          // 2. Multi-word overlap check
-          const words = kw.split(/\s+/).filter(w => w.length >= 3 && !stopwords.has(w));
-          if (words.length > 0) {
-            let matchedWordsCount = 0;
-            for (const w of words) {
-              if (emailText.includes(w)) {
-                matchedWordsCount++;
-              }
-            }
-            if (matchedWordsCount === words.length) {
-              const currentScore = kw.length * 5;
-              if (currentScore > score) {
-                score = currentScore;
-                matchedKeyword = kw;
-              }
-            } else if (matchedWordsCount > 0) {
-              const currentScore = matchedWordsCount * 3;
-              if (currentScore > score) {
-                score = currentScore;
-                matchedKeyword = words.filter(w => emailText.includes(w)).join(' ');
-              }
-            }
-          }
-        }
-      }
-
-      scoredList.push({
-        id: t.id,
-        name: t.name,
-        score,
-        reason: matchedKeyword ? `Matched terms: "${matchedKeyword}"` : 'General context relevance.'
-      });
-    }
-
-    // Sort by score descending
-    scoredList.sort((a, b) => b.score - a.score);
-
-    // Map top 3 to suggestions with confidence ranges
-    return scoredList.slice(0, 3).map((item, idx) => {
-      let confidence = 15;
-      if (item.score > 50) confidence = 88 - idx * 6;
-      else if (item.score > 20) confidence = 68 - idx * 12;
-      else if (item.score > 0) confidence = 48 - idx * 18;
-      else confidence = 18 - idx * 5;
-
-      return {
-        id: item.id,
-        name: item.name,
-        confidence: Math.max(5, confidence),
-        reason: item.reason
-      };
-    });
+    const result = matchTemplates(scoringInputs, selectedEmail.subject, selectedEmail.body);
+    return result.suggestions.map(s => ({
+      id: s.templateId,
+      name: s.name,
+      confidence: Math.round(s.confidence * 100),
+      reason: s.score > 0 ? 'See matched keywords above.' : 'No strong keyword signal — general context only.',
+    }));
   };
 
   const categoryList = (dashboardCharts?.categories || []).slice().sort((a: any, b: any) => b.value - a.value);
@@ -607,7 +550,7 @@ export default function InboxPage() {
                   <div>
                     <span className="text-gray-500 uppercase font-semibold">Matched Keywords:</span>
                     <p className="text-violet-300 font-semibold mt-1 truncate">
-                      {matchedTemplateKeywords.length > 0 ? matchedTemplateKeywords.join(', ') : 'None configured'}
+                      {matchedTemplateKeywords.length > 0 ? matchedTemplateKeywords.join(', ') : matchedTemplate ? 'Matched via AI semantic analysis, not keywords' : 'None'}
                     </p>
                   </div>
                 </div>

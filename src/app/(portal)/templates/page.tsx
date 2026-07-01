@@ -1,31 +1,45 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
-import { 
-  Plus, Edit, Trash, ToggleLeft, ToggleRight, Check, AlertTriangle, 
-  Terminal, ShieldCheck, HelpCircle, Save, Info, RefreshCw, MessageSquare
+import {
+  Plus, Edit, Trash, ToggleLeft, ToggleRight, Check, AlertTriangle,
+  Terminal, ShieldCheck, HelpCircle, Save, Info, RefreshCw, MessageSquare, X, PartyPopper
 } from 'lucide-react';
+import { StructuredKeywords, parseKeywords, serializeKeywords, emptyKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
+
+const KEYWORD_CATEGORIES: { key: keyof StructuredKeywords; label: string; hint: string }[] = [
+  { key: 'primary', label: 'Primary Keywords', hint: 'Strongest signal — the core phrase(s) for this template' },
+  { key: 'secondary', label: 'Secondary Keywords', hint: 'Supporting phrases that add confidence' },
+  { key: 'product', label: 'Product Keywords', hint: 'Product/part names this template is about' },
+  { key: 'problem', label: 'Problem Keywords', hint: 'Words customers use to describe the issue' },
+  { key: 'intent', label: 'Intent Phrases', hint: 'Policy/process language (warranty, return, claim...)' },
+  { key: 'negative', label: 'Negative Keywords', hint: 'If present, this template is excluded from matching' },
+];
 
 export default function TemplatesPage() {
-  const { 
-    templates, fetchTemplates, saveTemplate, deleteTemplate, isLoading 
+  const {
+    templates, fetchTemplates, saveTemplate, deleteTemplate, isLoading
   } = useStore();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
+
   const [name, setName] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [variables, setVariables] = useState('');
+  const [keywordsState, setKeywordsState] = useState<StructuredKeywords>(emptyKeywords());
+  const [keywordInputs, setKeywordInputs] = useState<Record<string, string>>({});
   const [active, setActive] = useState(true);
   const [notes, setNotes] = useState('');
+  const [saveToast, setSaveToast] = useState<string | null>(null);
 
   // Simulator states
   const [testSelectedId, setTestSelectedId] = useState('');
   const [testText, setTestText] = useState('');
-  const [testResult, setTestResult] = useState<{ matches: boolean; preview: string; keywords: string[] } | null>(null);
+  const [testResult, setTestResult] = useState<{ matches: boolean; preview: string; keywords: string[]; confidence: number; suggestions: { name: string; confidence: number }[] } | null>(null);
 
   // Learning logs state
   const [learningLogs, setLearningLogs] = useState<any[]>([]);
@@ -53,6 +67,8 @@ export default function TemplatesPage() {
     setSubject('');
     setBody('');
     setVariables('');
+    setKeywordsState(emptyKeywords());
+    setKeywordInputs({});
     setActive(true);
     setNotes('');
     setIsFormOpen(true);
@@ -66,13 +82,17 @@ export default function TemplatesPage() {
       subject,
       body,
       variables,
+      keywords: serializeKeywords(keywordsState),
       active,
       notes,
     });
+    setSaveToast('Keywords saved');
+    setTimeout(() => setSaveToast(null), 2500);
     setName('');
     setSubject('');
     setBody('');
     setVariables('');
+    setKeywordsState(emptyKeywords());
     setNotes('');
     setActive(true);
     setIsFormOpen(false);
@@ -84,9 +104,25 @@ export default function TemplatesPage() {
     setSubject(tmpl.subject);
     setBody(tmpl.body);
     setVariables(tmpl.variables);
+    setKeywordsState(parseKeywords(tmpl.keywords));
+    setKeywordInputs({});
     setActive(tmpl.active !== false);
     setNotes(tmpl.notes || '');
     setIsFormOpen(true);
+  };
+
+  const addKeywordToCategory = (category: keyof StructuredKeywords) => {
+    const value = (keywordInputs[category] || '').trim().toLowerCase();
+    if (!value) return;
+    setKeywordsState(prev => ({
+      ...prev,
+      [category]: prev[category].includes(value) ? prev[category] : [...prev[category], value],
+    }));
+    setKeywordInputs(prev => ({ ...prev, [category]: '' }));
+  };
+
+  const removeKeywordFromCategory = (category: keyof StructuredKeywords, value: string) => {
+    setKeywordsState(prev => ({ ...prev, [category]: prev[category].filter(k => k !== value) }));
   };
 
   const handleDelete = async (id: string) => {
@@ -106,12 +142,17 @@ export default function TemplatesPage() {
     const template = templates.find(t => t.id === testSelectedId);
     if (!template) return;
 
-    const normalizedText = testText.toLowerCase();
-    const keywords = (template.variables || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
-    keywords.push(template.name.toLowerCase());
-
-    const matchedKeywords = keywords.filter(kw => kw.length > 2 && normalizedText.includes(kw));
-    const matches = matchedKeywords.length > 0;
+    // Run the SAME structured scoring engine used for real incoming emails,
+    // across ALL templates, so this simulator honestly reflects what would
+    // actually happen (including whether a different template would win).
+    const scoringInputs: TemplateForScoring[] = templates.map(t => ({
+      id: t.id,
+      name: t.name,
+      active: t.active,
+      keywords: parseKeywords(t.keywords),
+    }));
+    const result = matchTemplates(scoringInputs, '', testText);
+    const matches = result.matchedTemplateId === template.id;
 
     // Simulate interpolation variables
     let preview = template.body;
@@ -132,7 +173,9 @@ export default function TemplatesPage() {
     setTestResult({
       matches,
       preview,
-      keywords: matchedKeywords
+      keywords: matches ? result.matchedTerms : [],
+      confidence: matches ? result.confidenceScore : 0,
+      suggestions: result.suggestions.map(s => ({ name: s.name, confidence: s.confidence })),
     });
   };
 
@@ -233,10 +276,10 @@ export default function TemplatesPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Keywords / Matching Phrases (Comma-separated)</label>
+                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Interpolation Variables (Comma-separated)</label>
                 <input
                   type="text"
-                  placeholder="e.g. reset, password, login, credential"
+                  placeholder="e.g. customer_name, closing"
                   value={variables}
                   onChange={(e) => setVariables(e.target.value)}
                   className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500 font-mono"
@@ -251,6 +294,66 @@ export default function TemplatesPage() {
                   onChange={(e) => setNotes(e.target.value)}
                   className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500"
                 />
+              </div>
+            </div>
+
+            {/* Structured keyword editor */}
+            <div className="border-t border-white/5 pt-4 space-y-4">
+              <label className="block font-semibold text-gray-400 uppercase tracking-wider">Matching Keywords</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {KEYWORD_CATEGORIES.map(({ key, label, hint }) => (
+                  <div key={key} className="bg-black/30 border border-white/10 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] font-bold text-gray-300 uppercase">{label}</span>
+                      <span className="text-[9px] text-gray-500">{keywordsState[key].length}</span>
+                    </div>
+                    <p className="text-[9px] text-gray-500 mb-2 leading-relaxed">{hint}</p>
+                    <div className="flex flex-wrap gap-1.5 mb-2 min-h-[20px]">
+                      {keywordsState[key].map((kw) => (
+                        <span
+                          key={kw}
+                          className={`flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono ${
+                            key === 'negative'
+                              ? 'bg-red-600/10 border border-red-500/20 text-red-300'
+                              : 'bg-violet-600/10 border border-violet-500/20 text-violet-300'
+                          }`}
+                        >
+                          {kw}
+                          <button
+                            type="button"
+                            onClick={() => removeKeywordFromCategory(key, kw)}
+                            className="hover:text-white cursor-pointer"
+                            title="Remove keyword"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={keywordInputs[key] || ''}
+                        onChange={(e) => setKeywordInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addKeywordToCategory(key);
+                          }
+                        }}
+                        placeholder="Add new keyword..."
+                        className="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-violet-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => addKeywordToCategory(key)}
+                        className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded text-[10px] font-semibold cursor-pointer"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -344,14 +447,26 @@ export default function TemplatesPage() {
                     </div>
 
                     <div className="border-t border-white/5 pt-3 mt-4 space-y-2">
-                      <div className="flex flex-wrap gap-1">
-                        {(tmpl.variables || '').split(',').map((v) => (
-                          <span key={v} className="px-1.5 py-0.5 rounded bg-white/5 text-[9px] text-gray-400 font-mono">
-                            {v.trim()}
-                          </span>
-                        ))}
-                      </div>
-                      
+                      {(() => {
+                        const kw = parseKeywords(tmpl.keywords);
+                        const preview = [...kw.primary, ...kw.product, ...kw.problem, ...kw.intent].slice(0, 6);
+                        const total = totalKeywordCount(kw);
+                        return total > 0 ? (
+                          <div className="flex flex-wrap gap-1 items-center">
+                            {preview.map((v) => (
+                              <span key={v} className="px-1.5 py-0.5 rounded bg-violet-600/10 border border-violet-500/20 text-[9px] text-violet-300 font-mono">
+                                {v}
+                              </span>
+                            ))}
+                            {total > preview.length && (
+                              <span className="text-[9px] text-gray-500">+{total - preview.length} more</span>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[9px] text-amber-400/80 italic">No distinguishing keywords configured yet — click Edit to add some.</p>
+                        );
+                      })()}
+
                       {/* Historical Feedback display */}
                       {feedbackLogs.length > 0 && (
                         <div className="bg-violet-950/10 border border-violet-500/10 p-2 rounded text-[9px] font-mono text-violet-300 space-y-1">
@@ -430,7 +545,7 @@ export default function TemplatesPage() {
                   <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
                     testResult.matches ? 'bg-emerald-600/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-600/10 border border-red-500/20 text-red-400'
                   }`}>
-                    {testResult.matches ? '✓ Trigger Match' : '✗ No Match'}
+                    {testResult.matches ? `✓ Trigger Match (${Math.round(testResult.confidence * 100)}%)` : '✗ No Match — a different/no template would be chosen'}
                   </span>
                 </div>
                 {testResult.keywords.length > 0 && (
@@ -441,6 +556,19 @@ export default function TemplatesPage() {
                         <span key={kw} className="px-1.5 py-0.5 rounded bg-violet-600/10 border border-violet-500/20 text-violet-400 font-mono text-[9px]">
                           {kw}
                         </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {testResult.suggestions.length > 0 && (
+                  <div>
+                    <span className="text-[9px] text-gray-500 block uppercase font-mono">Top Suggested Templates:</span>
+                    <div className="space-y-1 mt-1">
+                      {testResult.suggestions.map(s => (
+                        <div key={s.name} className="flex justify-between text-[10px] text-gray-300">
+                          <span className="truncate max-w-[70%]">{s.name}</span>
+                          <span className="text-gray-500 font-mono">{Math.round(s.confidence * 100)}%</span>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -456,6 +584,21 @@ export default function TemplatesPage() {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {saveToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            className="fixed bottom-6 right-6 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-xl bg-emerald-600 text-white shadow-2xl shadow-emerald-900/40 border border-emerald-400/30"
+          >
+            <PartyPopper className="w-4 h-4" />
+            <span className="text-xs font-semibold">{saveToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

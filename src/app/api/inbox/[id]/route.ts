@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendOutgoingMail } from '@/lib/mail-sender';
+import { parseKeywords, serializeKeywords } from '@/lib/keyword-engine';
 
 export async function GET(
   request: Request,
@@ -271,12 +272,13 @@ export async function POST(
           where: { id: targetTemplateId }
         });
         if (template) {
-          const currentVars = template.variables ? template.variables.split(',').map(v => v.trim()) : [];
-          if (!currentVars.map(v => v.toLowerCase()).includes(newKeyword.trim().toLowerCase())) {
-            currentVars.push(newKeyword.trim());
+          const structured = parseKeywords(template.keywords);
+          const normalized = newKeyword.trim().toLowerCase();
+          if (normalized && !structured.primary.includes(normalized)) {
+            structured.primary.push(normalized);
             await prisma.template.update({
               where: { id: targetTemplateId },
-              data: { variables: currentVars.join(', ') }
+              data: { keywords: serializeKeywords(structured) }
             });
           }
         }

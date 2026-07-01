@@ -135,6 +135,7 @@ model Template {
   subject        String
   body           String
   variables      String       // Comma separated list of variables like: {{customer_name}}, {{ticket_id}}
+  keywords       String       @default("{}") // JSON: { primary, secondary, product, problem, intent, negative: string[] }
   active         Boolean      @default(true)
   notes          String?      // Admin internal notes
   organizationId String

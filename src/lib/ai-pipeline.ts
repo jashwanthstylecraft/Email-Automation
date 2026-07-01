@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { parseKeywords, matchTemplates, TemplateForScoring, MatchResult } from './keyword-engine';
 
 export interface AIPipelineResult {
   language: string;
@@ -182,113 +183,43 @@ Return only the final email reply body text. Do not include markdown formatting 
 }
 
 /**
- * Deterministic keyword-based matching engine that runs when API keys are missing or as a fallback.
+ * Structured keyword-based matching engine (primary/secondary/product/problem/
+ * intent/negative tiers, see src/lib/keyword-engine.ts) that runs when API
+ * keys are missing or as a rescue path when the LLM's own match is unusable.
  */
 export async function runKeywordMatcher(
   body: string,
   subject: string,
   organizationId: string
-): Promise<{ matchedTemplateId: string | null; confidenceScore: number; matchReason: string }> {
-  const templates = await prisma.template.findMany({
-    where: { organizationId },
-  });
+): Promise<{ matchedTemplateId: string | null; confidenceScore: number; matchReason: string; suggestions?: MatchResult['suggestions'] }> {
+  const templates = await prisma.template.findMany({ where: { organizationId } });
 
-  const rules = await prisma.rule.findMany({
-    where: { organizationId },
-  });
-
-  const normalizedText = (subject + ' ' + body).toLowerCase();
-  type MatchTier = 'verbatim' | 'all-words';
-  const matches: { templateId: string; score: number; keyword: string; tier: MatchTier }[] = [];
-  const stopwords = new Set(['and', 'the', 'for', 'with', 'your', 'about', 'this', 'that', 'from', 'have', 'been', 'will', 'are', 'not', 'but', 'out']);
-
-  for (const t of templates) {
-    if (t.active === false) continue;
-
-    // Retrieve the matching keywords from the rule referencing this template in-memory
-    const rule = rules.find(r => r.actions.includes(t.id));
-    const explicitKeywords: string[] = [];
-
-    if (rule) {
-      try {
-        const conds = JSON.parse(rule.conditions);
-        const rulesList = conds.rules || [];
-        for (const r of rulesList) {
-          if (r.value) {
-            explicitKeywords.push(r.value.toLowerCase().trim());
-          }
-        }
-      } catch (err) {}
-    }
-
-    // Also parse keywords added via the user feedback console (or seeded curated keywords)
-    const addedKeywords = (t.variables || '').split(',')
+  const scoringInput: TemplateForScoring[] = templates.map(t => {
+    const structured = parseKeywords(t.keywords);
+    // User-added keywords (from the feedback "Add Keyword" flow) are stored
+    // in `variables` alongside the interpolation placeholders -- fold the
+    // real ones in as primary signal so they take effect immediately.
+    const extraFromVariables = (t.variables || '')
+      .split(',')
       .map(k => k.trim().toLowerCase())
-      .filter(k => k && k !== 'customer_name' && k !== 'closing' && k !== 'ticket_id' && k !== 'order_number' && k !== 'rma_number');
-    explicitKeywords.push(...addedKeywords);
+      .filter(k => k && !['customer_name', 'closing', 'ticket_id', 'order_number', 'rma_number'].includes(k));
+    return {
+      id: t.id,
+      name: t.name,
+      active: t.active,
+      keywords: { ...structured, primary: Array.from(new Set([...structured.primary, ...extraFromVariables])) },
+    };
+  });
 
-    // The template title is only ever checked as a full verbatim phrase — never
-    // decomposed into individual words. Titles are human-readable sentences
-    // ("Do you ship to Ireland?"), and splitting them produces generic words
-    // ("you", "ship", "for") that coincidentally appear in almost any email,
-    // causing unrelated emails to be confidently mis-assigned. Real
-    // per-template signal must come from explicit keywords, not the title.
-    const titlePhrase = t.name.toLowerCase().trim();
-    if (titlePhrase.length >= 4 && normalizedText.includes(titlePhrase)) {
-      matches.push({ templateId: t.id, score: titlePhrase.length * 10, keyword: titlePhrase, tier: 'verbatim' });
-    }
-
-    for (const kw of explicitKeywords) {
-      if (kw.length < 2) continue;
-
-      // 1. Verbatim check
-      if (normalizedText.includes(kw)) {
-        matches.push({ templateId: t.id, score: kw.length * 10, keyword: kw, tier: 'verbatim' });
-        continue;
-      }
-
-      // 2. Every word of a multi-word keyword phrase must be present
-      // (e.g. "dryer shutting off" needs all three words somewhere in the
-      // email). A partial word overlap is NOT accepted as a match at all —
-      // it's indistinguishable from coincidence and was previously causing
-      // unrelated emails to get a confident-looking wrong template.
-      const words = kw.split(/\s+/).filter(w => w.length >= 3 && !stopwords.has(w));
-      if (words.length >= 2 && words.every(w => normalizedText.includes(w))) {
-        matches.push({ templateId: t.id, score: kw.length * 5, keyword: kw, tier: 'all-words' });
-      }
-    }
+  const result = matchTemplates(scoringInput, subject, body);
+  if (!result.matchedTemplateId) {
+    return { matchedTemplateId: null, confidenceScore: 0, matchReason: 'no keyword or phrase matched any approved template', suggestions: result.suggestions };
   }
-
-  if (matches.length === 0) {
-    return { matchedTemplateId: null, confidenceScore: 0.0, matchReason: 'No keyword matches found' };
-  }
-
-  const scoreMap: Record<string, number> = {};
-  const tierRank: Record<MatchTier, number> = { verbatim: 2, 'all-words': 1 };
-  const bestTierMap: Record<string, MatchTier> = {};
-  for (const m of matches) {
-    scoreMap[m.templateId] = (scoreMap[m.templateId] || 0) + m.score;
-    if (!bestTierMap[m.templateId] || tierRank[m.tier] > tierRank[bestTierMap[m.templateId]]) {
-      bestTierMap[m.templateId] = m.tier;
-    }
-  }
-
-  const sortedTemplates = Object.entries(scoreMap).sort((a, b) => b[1] - a[1]);
-  const bestMatchId = sortedTemplates[0][0];
-  const bestTier = bestTierMap[bestMatchId];
-
-  // Confidence reflects how the match was found — an exact phrase hit is
-  // trusted more than a multi-word phrase where every word appeared
-  // somewhere in the email (but not necessarily together/in context).
-  const confidenceByTier: Record<MatchTier, number> = {
-    verbatim: 0.92,
-    'all-words': 0.72,
-  };
-
   return {
-    matchedTemplateId: bestMatchId,
-    confidenceScore: confidenceByTier[bestTier],
-    matchReason: `Matched keyword (${bestTier}): "${matches.find(m => m.templateId === bestMatchId && m.tier === bestTier)?.keyword}"`
+    matchedTemplateId: result.matchedTemplateId,
+    confidenceScore: result.confidenceScore,
+    matchReason: result.matchReason,
+    suggestions: result.suggestions,
   };
 }
 

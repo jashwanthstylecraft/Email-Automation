@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, subject, body: templateBody, variables, active, notes, organizationId } = body;
+    const { name, subject, body: templateBody, variables, keywords, active, notes, organizationId } = body;
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
         subject,
         body: templateBody,
         variables: variables || 'customer_name,closing',
+        keywords: keywords || '{}',
         active: active !== undefined ? !!active : true,
         notes: notes || null,
         organizationId,
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, subject, body: templateBody, variables, active, notes } = body;
+    const { id, name, subject, body: templateBody, variables, keywords, active, notes } = body;
 
     const template = await prisma.template.update({
       where: { id },
@@ -60,6 +61,7 @@ export async function PUT(request: Request) {
         subject,
         body: templateBody,
         variables,
+        keywords: keywords !== undefined ? keywords : undefined,
         active: active !== undefined ? !!active : undefined,
         notes: notes !== undefined ? notes : undefined,
       },
