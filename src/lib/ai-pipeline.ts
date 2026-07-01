@@ -198,7 +198,7 @@ export async function runKeywordMatcher(
   });
 
   const normalizedText = (subject + ' ' + body).toLowerCase();
-  type MatchTier = 'verbatim' | 'all-words' | 'partial';
+  type MatchTier = 'verbatim' | 'all-words';
   const matches: { templateId: string; score: number; keyword: string; tier: MatchTier }[] = [];
   const stopwords = new Set(['and', 'the', 'for', 'with', 'your', 'about', 'this', 'that', 'from', 'have', 'been', 'will', 'are', 'not', 'but', 'out']);
 
@@ -207,7 +207,7 @@ export async function runKeywordMatcher(
 
     // Retrieve the matching keywords from the rule referencing this template in-memory
     const rule = rules.find(r => r.actions.includes(t.id));
-    const keywords: string[] = [];
+    const explicitKeywords: string[] = [];
 
     if (rule) {
       try {
@@ -215,45 +215,46 @@ export async function runKeywordMatcher(
         const rulesList = conds.rules || [];
         for (const r of rulesList) {
           if (r.value) {
-            keywords.push(r.value.toLowerCase().trim());
+            explicitKeywords.push(r.value.toLowerCase().trim());
           }
         }
       } catch (err) {}
     }
 
-    // Also parse keywords added via the user feedback console
+    // Also parse keywords added via the user feedback console (or seeded curated keywords)
     const addedKeywords = (t.variables || '').split(',')
       .map(k => k.trim().toLowerCase())
       .filter(k => k && k !== 'customer_name' && k !== 'closing' && k !== 'ticket_id' && k !== 'order_number' && k !== 'rma_number');
-    keywords.push(...addedKeywords);
+    explicitKeywords.push(...addedKeywords);
 
-    // Include template title/name
-    keywords.push(t.name.toLowerCase().trim());
+    // The template title is only ever checked as a full verbatim phrase — never
+    // decomposed into individual words. Titles are human-readable sentences
+    // ("Do you ship to Ireland?"), and splitting them produces generic words
+    // ("you", "ship", "for") that coincidentally appear in almost any email,
+    // causing unrelated emails to be confidently mis-assigned. Real
+    // per-template signal must come from explicit keywords, not the title.
+    const titlePhrase = t.name.toLowerCase().trim();
+    if (titlePhrase.length >= 4 && normalizedText.includes(titlePhrase)) {
+      matches.push({ templateId: t.id, score: titlePhrase.length * 10, keyword: titlePhrase, tier: 'verbatim' });
+    }
 
-    for (const kw of keywords) {
-      if (kw.length >= 2) {
-        // 1. Verbatim check
-        if (normalizedText.includes(kw)) {
-          matches.push({ templateId: t.id, score: kw.length * 10, keyword: kw, tier: 'verbatim' });
-        } else {
-          // 2. Individual words check (multi-word keyword phrases like "dryer shutting off")
-          const words = kw.split(/\s+/).filter(w => w.length >= 3 && !stopwords.has(w));
-          if (words.length > 0) {
-            let matchedWordsCount = 0;
-            for (const w of words) {
-              if (normalizedText.includes(w)) {
-                matchedWordsCount++;
-              }
-            }
-            if (matchedWordsCount === words.length) {
-              matches.push({ templateId: t.id, score: kw.length * 5, keyword: kw, tier: 'all-words' });
-            } else if (matchedWordsCount > 0 && words.length >= 2) {
-              // Only a fraction of a multi-word phrase matched (e.g. one generic
-              // word coincidentally present) — weak signal, not a real match.
-              matches.push({ templateId: t.id, score: matchedWordsCount * 3, keyword: words.filter(w => normalizedText.includes(w)).join(' '), tier: 'partial' });
-            }
-          }
-        }
+    for (const kw of explicitKeywords) {
+      if (kw.length < 2) continue;
+
+      // 1. Verbatim check
+      if (normalizedText.includes(kw)) {
+        matches.push({ templateId: t.id, score: kw.length * 10, keyword: kw, tier: 'verbatim' });
+        continue;
+      }
+
+      // 2. Every word of a multi-word keyword phrase must be present
+      // (e.g. "dryer shutting off" needs all three words somewhere in the
+      // email). A partial word overlap is NOT accepted as a match at all —
+      // it's indistinguishable from coincidence and was previously causing
+      // unrelated emails to get a confident-looking wrong template.
+      const words = kw.split(/\s+/).filter(w => w.length >= 3 && !stopwords.has(w));
+      if (words.length >= 2 && words.every(w => normalizedText.includes(w))) {
+        matches.push({ templateId: t.id, score: kw.length * 5, keyword: kw, tier: 'all-words' });
       }
     }
   }
@@ -263,7 +264,7 @@ export async function runKeywordMatcher(
   }
 
   const scoreMap: Record<string, number> = {};
-  const tierRank: Record<MatchTier, number> = { verbatim: 3, 'all-words': 2, partial: 1 };
+  const tierRank: Record<MatchTier, number> = { verbatim: 2, 'all-words': 1 };
   const bestTierMap: Record<string, MatchTier> = {};
   for (const m of matches) {
     scoreMap[m.templateId] = (scoreMap[m.templateId] || 0) + m.score;
@@ -276,15 +277,12 @@ export async function runKeywordMatcher(
   const bestMatchId = sortedTemplates[0][0];
   const bestTier = bestTierMap[bestMatchId];
 
-  // Confidence reflects how the strongest match was found, not just that
-  // something matched — a single coincidental word overlap ("partial")
-  // must not be treated as confidently as an exact keyword/phrase hit,
-  // otherwise unrelated emails get auto-drafted with the wrong template
-  // instead of being routed to manual review.
+  // Confidence reflects how the match was found — an exact phrase hit is
+  // trusted more than a multi-word phrase where every word appeared
+  // somewhere in the email (but not necessarily together/in context).
   const confidenceByTier: Record<MatchTier, number> = {
     verbatim: 0.92,
-    'all-words': 0.78,
-    partial: 0.35,
+    'all-words': 0.72,
   };
 
   return {
@@ -392,7 +390,7 @@ async function runMockAIPipeline(
       draftReply = wrapResponseWithGreetingAndClosing(expandedBody, sender, greeting, closing);
       matchedTemplateId = template.id;
       aiConfidence = keywordMatch.confidenceScore;
-      summary = `Customer matched rule: "${template.name}" via keywords.`;
+      summary = `Matched "${template.name}" — ${keywordMatch.matchReason}.`;
     }
   }
 
@@ -595,7 +593,7 @@ Return ONLY a valid JSON object. Do not include markdown code block formatting.
             spam: !!result.spam,
             duplicate,
             draftReply,
-            summary: `Matched keyword fallback: "${template.name}"`,
+            summary: `Matched "${template.name}" — ${keywordMatch.matchReason}.`,
             matchedTemplateId,
             aiProvider: 'Keyword Matcher',
           };

@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame, Ban,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper
 } from 'lucide-react';
 
 export default function InboxPage() {
@@ -38,6 +39,13 @@ export default function InboxPage() {
 
   // Sync timestamp state
   const [lastSyncedAt, setLastSyncedAt] = useState<string>('Never');
+
+  // Send confirmation toast
+  const [sendToast, setSendToast] = useState<string | null>(null);
+  const showSendToast = (message: string) => {
+    setSendToast(message);
+    setTimeout(() => setSendToast(null), 3000);
+  };
 
   useEffect(() => {
     fetchEmails({ status: activeFilter, search, category: activeCategory });
@@ -74,6 +82,7 @@ export default function InboxPage() {
   const handleApprove = async () => {
     if (!selectedEmail) return;
     await approveDraft(selectedEmail.id);
+    showSendToast(`Reply sent to ${selectedEmail.sender}`);
   };
 
   const handleReject = async () => {
@@ -92,6 +101,7 @@ export default function InboxPage() {
     await sendCustomReply(selectedEmail.id, customReply);
     setCustomReply('');
     setIsCustomMode(false);
+    showSendToast(`Reply sent to ${selectedEmail.sender}`);
   };
 
   const handleSyncInbox = async () => {
@@ -221,12 +231,12 @@ export default function InboxPage() {
   };
 
   const filterTabs = [
-    { label: 'All', value: 'ALL' },
-    { label: 'Unread', value: 'UNREAD' },
-    { label: 'Manual Review Queue', value: 'WAITING' },
-    { label: 'Replied', value: 'REPLIED' },
-    { label: 'Escalated', value: 'ESCALATED' },
-    { label: 'Spam', value: 'SPAM' },
+    { label: 'Inbox', value: 'ALL', icon: InboxIcon },
+    { label: 'Unread', value: 'UNREAD', icon: CircleDot },
+    { label: 'Manual Review', value: 'WAITING', icon: ShieldQuestion },
+    { label: 'Sent', value: 'REPLIED', icon: CheckCheck },
+    { label: 'Escalated', value: 'ESCALATED', icon: AlertTriangle },
+    { label: 'Spam', value: 'SPAM', icon: Ban },
   ];
 
   const getPriorityBadge = (p: string) => {
@@ -259,6 +269,14 @@ export default function InboxPage() {
     : null;
 
   const currentlyMatchedTemplateName = overrideTemplateName || (matchedTemplate ? matchedTemplate.name : 'None');
+
+  // Filter out placeholder interpolation names (customer_name, closing, etc.)
+  // so this only shows real trigger keywords, not template variables.
+  const PLACEHOLDER_NAMES = new Set(['customer_name', 'closing', 'ticket_id', 'order_number', 'rma_number']);
+  const matchedTemplateKeywords = (matchedTemplate?.variables || '')
+    .split(',')
+    .map(k => k.trim())
+    .filter(k => k && !PLACEHOLDER_NAMES.has(k.toLowerCase()));
 
   // Get Top 3 Suggested templates dynamically based on email content text similarity
   const getSuggestions = () => {
@@ -351,50 +369,79 @@ export default function InboxPage() {
 
   return (
     <div className="flex h-[calc(100vh-10rem)] w-full gap-6 text-xs">
-      {/* Category classification sidebar */}
-      <div className="w-44 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
-        <div className="p-4 border-b border-white/5 bg-[#121217]/30">
-          <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
-            <Tag className="w-3.5 h-3.5 text-violet-400" />
-            Classify
-          </h3>
-          <p className="text-[9px] text-gray-500 mt-0.5">Filter inbox by category</p>
+      {/* Mailbox + Classification sidebar */}
+      <div className="w-48 flex-shrink-0 flex flex-col gap-4">
+        {/* Mailbox folders (regular mail-client sections) */}
+        <div className="flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
+          <div className="p-4 border-b border-white/5 bg-[#121217]/30">
+            <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <InboxIcon className="w-3.5 h-3.5 text-violet-400" />
+              Mailbox
+            </h3>
+          </div>
+          <div className="p-2 space-y-1">
+            {filterTabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.value}
+                  onClick={() => setActiveFilter(tab.value)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
+                    activeFilter === tab.value
+                      ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="truncate">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          <button
-            onClick={() => setActiveCategory('ALL')}
-            className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
-              activeCategory === 'ALL'
-                ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
-                : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-            }`}
-          >
-            <span className="flex items-center gap-1.5 truncate">
-              <InboxIcon className="w-3.5 h-3.5 flex-shrink-0" />
-              All Categories
-            </span>
-            <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{totalCategorized}</span>
-          </button>
 
-          {categoryList.map((cat: any) => (
+        {/* Category classification */}
+        <div className="flex-1 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60 min-h-0">
+          <div className="p-4 border-b border-white/5 bg-[#121217]/30">
+            <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-violet-400" />
+              Classify
+            </h3>
+            <p className="text-[9px] text-gray-500 mt-0.5">Filter inbox by category</p>
+          </div>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
             <button
-              key={cat.name}
-              onClick={() => setActiveCategory(cat.name)}
-              title={cat.name}
+              onClick={() => setActiveCategory('ALL')}
               className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
-                activeCategory === cat.name
+                activeCategory === 'ALL'
                   ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
                   : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
               }`}
             >
-              <span className="truncate">{cat.name}</span>
-              <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{cat.value}</span>
+              <span className="truncate">All Categories</span>
+              <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{totalCategorized}</span>
             </button>
-          ))}
 
-          {categoryList.length === 0 && (
-            <p className="text-center text-gray-500 text-[10px] py-4 px-2 leading-relaxed">No categorized emails yet.</p>
-          )}
+            {categoryList.map((cat: any) => (
+              <button
+                key={cat.name}
+                onClick={() => setActiveCategory(cat.name)}
+                title={cat.name}
+                className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
+                  activeCategory === cat.name
+                    ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <span className="truncate">{cat.name}</span>
+                <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{cat.value}</span>
+              </button>
+            ))}
+
+            {categoryList.length === 0 && (
+              <p className="text-center text-gray-500 text-[10px] py-4 px-2 leading-relaxed">No categorized emails yet.</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -437,23 +484,6 @@ export default function InboxPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </div>
-
-        {/* Filters Tabs */}
-        <div className="flex border-b border-white/5 overflow-x-auto scrollbar-none px-2 py-1.5 gap-1">
-          {filterTabs.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setActiveFilter(tab.value)}
-              className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-semibold tracking-wider uppercase transition-all cursor-pointer ${
-                activeFilter === tab.value
-                  ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
-                  : 'text-gray-400 hover:text-white border border-transparent'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
         </div>
 
         {/* Email list container */}
@@ -577,7 +607,7 @@ export default function InboxPage() {
                   <div>
                     <span className="text-gray-500 uppercase font-semibold">Matched Keywords:</span>
                     <p className="text-violet-300 font-semibold mt-1 truncate">
-                      {matchedTemplate?.variables || 'None'}
+                      {matchedTemplateKeywords.length > 0 ? matchedTemplateKeywords.join(', ') : 'None configured'}
                     </p>
                   </div>
                 </div>
@@ -944,6 +974,28 @@ export default function InboxPage() {
           </>
         )}
       </div>
+
+      {/* Animated send confirmation toast */}
+      <AnimatePresence>
+        {sendToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+            className="fixed bottom-6 right-6 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-xl bg-emerald-600 text-white shadow-2xl shadow-emerald-900/40 border border-emerald-400/30"
+          >
+            <motion.span
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 500 }}
+            >
+              <PartyPopper className="w-4 h-4" />
+            </motion.span>
+            <span className="text-xs font-semibold">{sendToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
