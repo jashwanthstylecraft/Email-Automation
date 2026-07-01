@@ -8,7 +8,7 @@ import { Wand2, Mail, Lock, ArrowRight } from 'lucide-react';
 export default function LoginPage() {
   const router = useRouter();
   const { user, fetchSession } = useStore();
-  const [email, setEmail] = useState('jane@stylecraftus.com');
+  const [email, setEmail] = useState('jashwanthd@stylecraftus.com');
   const [password, setPassword] = useState('password123');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -60,7 +60,7 @@ export default function LoginPage() {
           Intelligent Email Automation
         </p>
         <p className="mt-2 text-center text-xs text-gray-400">
-          Demo Credentials Seeded: <span className="font-mono text-violet-300">jane@stylecraftus.com / password123</span>
+          Demo Credentials Seeded: <span className="font-mono text-violet-300">jashwanthd@stylecraftus.com / password123</span>
         </p>
       </div>
 

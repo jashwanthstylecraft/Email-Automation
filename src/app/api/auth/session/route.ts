@@ -16,25 +16,6 @@ export async function GET() {
       }
     }
 
-    // Auto-login fallback for ease of demo out-of-the-box
-    if (!userSession) {
-      const defaultUser = await prisma.user.findFirst({
-        include: { organization: true },
-      });
-      if (defaultUser) {
-        return NextResponse.json({
-          user: {
-            id: defaultUser.id,
-            name: defaultUser.name,
-            email: defaultUser.email,
-            role: defaultUser.role,
-            organizationId: defaultUser.organizationId,
-            organizationName: defaultUser.organization.name,
-          },
-        });
-      }
-    }
-
     if (!userSession) {
       return NextResponse.json({ user: null });
     }
