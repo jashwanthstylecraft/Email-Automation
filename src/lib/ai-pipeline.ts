@@ -198,7 +198,8 @@ export async function runKeywordMatcher(
   });
 
   const normalizedText = (subject + ' ' + body).toLowerCase();
-  const matches: { templateId: string; score: number; keyword: string }[] = [];
+  type MatchTier = 'verbatim' | 'all-words' | 'partial';
+  const matches: { templateId: string; score: number; keyword: string; tier: MatchTier }[] = [];
   const stopwords = new Set(['and', 'the', 'for', 'with', 'your', 'about', 'this', 'that', 'from', 'have', 'been', 'will', 'are', 'not', 'but', 'out']);
 
   for (const t of templates) {
@@ -233,7 +234,7 @@ export async function runKeywordMatcher(
       if (kw.length >= 2) {
         // 1. Verbatim check
         if (normalizedText.includes(kw)) {
-          matches.push({ templateId: t.id, score: kw.length * 10, keyword: kw });
+          matches.push({ templateId: t.id, score: kw.length * 10, keyword: kw, tier: 'verbatim' });
         } else {
           // 2. Individual words check (multi-word keyword phrases like "dryer shutting off")
           const words = kw.split(/\s+/).filter(w => w.length >= 3 && !stopwords.has(w));
@@ -245,9 +246,11 @@ export async function runKeywordMatcher(
               }
             }
             if (matchedWordsCount === words.length) {
-              matches.push({ templateId: t.id, score: kw.length * 5, keyword: kw });
-            } else if (matchedWordsCount > 0) {
-              matches.push({ templateId: t.id, score: matchedWordsCount * 3, keyword: words.filter(w => normalizedText.includes(w)).join(' ') });
+              matches.push({ templateId: t.id, score: kw.length * 5, keyword: kw, tier: 'all-words' });
+            } else if (matchedWordsCount > 0 && words.length >= 2) {
+              // Only a fraction of a multi-word phrase matched (e.g. one generic
+              // word coincidentally present) — weak signal, not a real match.
+              matches.push({ templateId: t.id, score: matchedWordsCount * 3, keyword: words.filter(w => normalizedText.includes(w)).join(' '), tier: 'partial' });
             }
           }
         }
@@ -260,17 +263,34 @@ export async function runKeywordMatcher(
   }
 
   const scoreMap: Record<string, number> = {};
+  const tierRank: Record<MatchTier, number> = { verbatim: 3, 'all-words': 2, partial: 1 };
+  const bestTierMap: Record<string, MatchTier> = {};
   for (const m of matches) {
     scoreMap[m.templateId] = (scoreMap[m.templateId] || 0) + m.score;
+    if (!bestTierMap[m.templateId] || tierRank[m.tier] > tierRank[bestTierMap[m.templateId]]) {
+      bestTierMap[m.templateId] = m.tier;
+    }
   }
 
   const sortedTemplates = Object.entries(scoreMap).sort((a, b) => b[1] - a[1]);
   const bestMatchId = sortedTemplates[0][0];
+  const bestTier = bestTierMap[bestMatchId];
+
+  // Confidence reflects how the strongest match was found, not just that
+  // something matched — a single coincidental word overlap ("partial")
+  // must not be treated as confidently as an exact keyword/phrase hit,
+  // otherwise unrelated emails get auto-drafted with the wrong template
+  // instead of being routed to manual review.
+  const confidenceByTier: Record<MatchTier, number> = {
+    verbatim: 0.92,
+    'all-words': 0.78,
+    partial: 0.35,
+  };
 
   return {
     matchedTemplateId: bestMatchId,
-    confidenceScore: 0.90,
-    matchReason: `Matched keyword: "${matches.find(m => m.templateId === bestMatchId)?.keyword}"`
+    confidenceScore: confidenceByTier[bestTier],
+    matchReason: `Matched keyword (${bestTier}): "${matches.find(m => m.templateId === bestMatchId && m.tier === bestTier)?.keyword}"`
   };
 }
 
