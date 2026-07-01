@@ -551,7 +551,13 @@ Return ONLY a valid JSON object. Do not include markdown code block formatting.
       }
     }
 
-    if (!matchedTemplateId && confidenceScore < 0.60) {
+    if (!matchedTemplateId) {
+      // The LLM either found no match or suggested a templateId that
+      // doesn't exist in the database (e.g. it slightly misquoted the id).
+      // Always try the keyword matcher before giving up to the canned
+      // fallback text — the fallback must only be used when NO approved
+      // template matches through either method, not just when the LLM's
+      // own (possibly wrong) confidence happened to be high.
       const keywordMatch = await runKeywordMatcher(body, subject, organizationId);
       if (keywordMatch.matchedTemplateId) {
         const template = await prisma.template.findUnique({

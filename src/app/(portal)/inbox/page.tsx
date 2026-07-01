@@ -2,21 +2,23 @@
 
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
-import { 
-  Search, Mail, AlertTriangle, ShieldCheck, Flame, Ban, 
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft
+import {
+  Search, Mail, AlertTriangle, ShieldCheck, Flame, Ban,
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon
 } from 'lucide-react';
 
 export default function InboxPage() {
-  const { 
-    emails, selectedEmail, selectEmail, fetchEmails, 
+  const {
+    emails, selectedEmail, selectEmail, fetchEmails,
     approveDraft, rejectDraft, saveDraftEdits, sendCustomReply,
     changeEmailStatus, assignEmailUser, isLoading, user,
-    templates, fetchTemplates, saveTemplate, deleteEmail, archiveEmail, syncInbox, fetchDashboard
+    templates, fetchTemplates, saveTemplate, deleteEmail, archiveEmail, syncInbox, fetchDashboard,
+    dashboardCharts
   } = useStore();
 
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
+  const [activeCategory, setActiveCategory] = useState('ALL');
   const [replyText, setReplyText] = useState('');
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [customReply, setCustomReply] = useState('');
@@ -38,9 +40,14 @@ export default function InboxPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string>('Never');
 
   useEffect(() => {
-    fetchEmails({ status: activeFilter, search });
+    fetchEmails({ status: activeFilter, search, category: activeCategory });
     fetchTemplates();
-  }, [activeFilter, search]);
+  }, [activeFilter, search, activeCategory]);
+
+  // Category counts for the classification sidebar (independent of the current filter)
+  useEffect(() => {
+    fetchDashboard({ silent: true });
+  }, []);
 
   useEffect(() => {
     if (selectedEmail) {
@@ -339,14 +346,75 @@ export default function InboxPage() {
     });
   };
 
+  const categoryList = (dashboardCharts?.categories || []).slice().sort((a: any, b: any) => b.value - a.value);
+  const totalCategorized = categoryList.reduce((sum: number, c: any) => sum + c.value, 0);
+
   return (
     <div className="flex h-[calc(100vh-10rem)] w-full gap-6 text-xs">
+      {/* Category classification sidebar */}
+      <div className="w-44 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
+        <div className="p-4 border-b border-white/5 bg-[#121217]/30">
+          <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+            <Tag className="w-3.5 h-3.5 text-violet-400" />
+            Classify
+          </h3>
+          <p className="text-[9px] text-gray-500 mt-0.5">Filter inbox by category</p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <button
+            onClick={() => setActiveCategory('ALL')}
+            className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
+              activeCategory === 'ALL'
+                ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+            }`}
+          >
+            <span className="flex items-center gap-1.5 truncate">
+              <InboxIcon className="w-3.5 h-3.5 flex-shrink-0" />
+              All Categories
+            </span>
+            <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{totalCategorized}</span>
+          </button>
+
+          {categoryList.map((cat: any) => (
+            <button
+              key={cat.name}
+              onClick={() => setActiveCategory(cat.name)}
+              title={cat.name}
+              className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
+                activeCategory === cat.name
+                  ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+              }`}
+            >
+              <span className="truncate">{cat.name}</span>
+              <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{cat.value}</span>
+            </button>
+          ))}
+
+          {categoryList.length === 0 && (
+            <p className="text-center text-gray-500 text-[10px] py-4 px-2 leading-relaxed">No categorized emails yet.</p>
+          )}
+        </div>
+      </div>
+
       {/* Left panel: list of emails */}
       <div className="w-1/3 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
         {/* Sync Controls Header */}
         <div className="p-4 border-b border-white/5 bg-[#121217]/30 flex justify-between items-center gap-3">
           <div>
-            <h3 className="font-bold text-white text-xs uppercase tracking-wider">Inbox Queue</h3>
+            <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-2">
+              Inbox Queue
+              {activeCategory !== 'ALL' && (
+                <button
+                  onClick={() => setActiveCategory('ALL')}
+                  className="normal-case font-semibold px-2 py-0.5 rounded-full bg-violet-600/20 border border-violet-500/30 text-violet-300 text-[9px] flex items-center gap-1 cursor-pointer hover:bg-violet-600/30"
+                  title="Clear category filter"
+                >
+                  {activeCategory} <span className="text-violet-400">×</span>
+                </button>
+              )}
+            </h3>
             <p className="text-[9px] text-gray-500 mt-0.5">Last synced: <span className="text-violet-400 font-medium font-mono">{lastSyncedAt}</span></p>
           </div>
           <button
