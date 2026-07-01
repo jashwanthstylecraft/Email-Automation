@@ -19,7 +19,7 @@ Intelligent SaaS platform that monitors an organization's support mailbox, runs 
 
 * **Core**: Next.js 15 (App Router), React 19, TypeScript
 * **Styling**: Tailwind CSS
-* **Database**: SQLite (Development) / PostgreSQL (Production), Prisma ORM
+* **Database**: PostgreSQL, Prisma ORM (Driver Adapters)
 * **State Management**: Zustand
 * **Charts**: Recharts
 * **AI Engine**: Google Gemini API, OpenAI GPT, or self-contained **Mock Local AI Fallback** for offline testing.
@@ -28,19 +28,21 @@ Intelligent SaaS platform that monitors an organization's support mailbox, runs 
 
 ## Local Quick Start
 
-Follow these steps to run the complete stack locally with zero external service dependencies.
-
 ### 1. Prerequisite Installations
-Ensure Node.js and Git are installed on your system.
+Ensure Node.js, Git, and a Postgres database are available. The easiest options:
+- `docker compose up postgres` (uses the `postgres` service already defined in `docker-compose.yml`), or
+- a free hosted database from [Neon](https://neon.tech) or [Supabase](https://supabase.com) — works for local dev too.
 
 ### 2. Install Project Dependencies
-Run the command below in the project directory to install dependencies (bypassing PowerShell execution policies if on Windows):
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process
 npm install
 ```
 
-### 3. Initialize & Seed Database
+### 3. Configure Environment
+Copy `.env.example` to `.env` and set `DATABASE_URL` to your Postgres connection string.
+
+### 4. Initialize & Seed Database
 Build the tables and seed rich mock customer tickets, templates, rules, and knowledge base sheets:
 ```powershell
 npx prisma generate
@@ -48,19 +50,19 @@ npx prisma db push
 npx tsx prisma/seed.ts
 ```
 
-### 4. Run Development Server
+### 5. Run Development Server
 ```powershell
 npm run dev
 ```
 Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
-* **Demo login credentials**: `jane@acme.com` / `password123` (or click "Sign In" to auto-login).
+* **Demo login credentials**: `jane@stylecraftus.com` / `password123` (or click "Sign In" to auto-login).
 
 ---
 
 ## API Configuration (Gemini / OpenAI)
 
-To activate live LLM classifications and generation rather than the mock local engine, rename `.env.example` to `.env` and fill in your API credentials:
+To activate live LLM classifications and generation rather than the mock local engine, fill in your API credentials in `.env`:
 
 ```ini
 GEMINI_API_KEY="your-gemini-key"
@@ -69,29 +71,13 @@ OPENAI_API_KEY="your-openai-key"
 
 ---
 
-## Switching to PostgreSQL in Production
+## Deploying for Free (Vercel + Neon)
 
-Prisma 7 uses **mandatory Driver Adapters**. To switch to PostgreSQL:
+Vercel's serverless runtime has an ephemeral filesystem and no always-on process, so this app runs a scheduled sync (`GET /api/cron/sync`) instead of a continuously-listening IMAP connection. See `vercel.json` for the cron schedule.
 
-1. Install the PG Driver Adapter:
-   ```bash
-   npm install @prisma/adapter-pg pg
-   npm install -D @types/pg
-   ```
-2. Update `prisma/schema.prisma` datasource:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-   }
-   ```
-3. Update `src/lib/prisma.ts` to instantiate the PgAdapter:
-   ```typescript
-   import { PrismaClient } from '@/generated/prisma/client';
-   import { PrismaPg } from '@prisma/adapter-pg';
-   import pg from 'pg';
-
-   const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-   const adapter = new PrismaPg(pool);
-   export const prisma = new PrismaClient({ adapter });
-   ```
-4. Update `DATABASE_URL` in your `.env` to point to your PostgreSQL instance.
+1. **Create a free Postgres database** at [neon.tech](https://neon.tech) (or Supabase) and copy its connection string.
+2. **Push the schema**: locally, set `DATABASE_URL` to that connection string in `.env`, then run `npx prisma db push` and `npx tsx prisma/seed.ts` once to create tables and seed demo data.
+3. **Import this repo into Vercel** (vercel.com → Add New → Project → import from GitHub).
+4. **Set environment variables** in the Vercel project settings: `DATABASE_URL`, `GEMINI_API_KEY`/`OPENAI_API_KEY` (optional), `IMAP_*`/`SMTP_*` (optional, for live email), and `CRON_SECRET` (any random string — protects the cron endpoint).
+5. **Deploy.** Vercel will run `npm run build`, which generates the Prisma client automatically.
+6. The built-in `vercel.json` cron runs once a day on the free Hobby plan. For more frequent syncing on the free tier, point an external scheduler (e.g. [cron-job.org](https://cron-job.org), free) at `https://<your-app>.vercel.app/api/cron/sync` with header `Authorization: Bearer <CRON_SECRET>` every few minutes — or just use the "Sync Inbox" button in the UI.

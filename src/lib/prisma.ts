@@ -1,18 +1,15 @@
 import { PrismaClient } from '@/generated/prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import path from 'path';
-
-// Resolve database path relative to root
-const dbPath = path.resolve(process.cwd(), 'dev.db');
+import { PrismaPg } from '@prisma/adapter-pg';
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
 const getPrisma = () => {
-  const adapter = new PrismaBetterSqlite3({
-    url: `file:${dbPath}`
-  });
+  // Constructing the adapter/client is lazy (no connection attempt happens
+  // here), so this is safe to import even when DATABASE_URL isn't set yet
+  // (e.g. pure-logic unit tests that never touch the database).
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
   return new PrismaClient({ adapter });
 };
 

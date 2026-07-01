@@ -15,7 +15,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma Client for SQLite
+# Generate Prisma Client (Postgres)
 RUN npx prisma generate
 
 # Build Next.js project
@@ -35,7 +35,6 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/dev.db ./dev.db
 COPY --from=builder /app/src/generated/prisma ./src/generated/prisma
 
 # Standalone build copy

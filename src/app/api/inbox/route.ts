@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { syncNewMockEmail } from '@/lib/sync-service';
-import { syncLiveIMAPEmail } from '@/lib/live-sync-service';
+import { syncOrgInbox } from '@/lib/inbox-sync';
 
 export async function GET(request: Request) {
   try {
@@ -60,26 +59,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
     }
 
-    // Find the first inbox of this organization to sync
-    const inbox = await prisma.inbox.findFirst({
-      where: { organizationId: orgId },
-    });
-
-    if (!inbox) {
-      return NextResponse.json({ error: 'No configured inbox found' }, { status: 404 });
+    const result = await syncOrgInbox(orgId);
+    if (!result.success) {
+      return NextResponse.json({ error: result.error }, { status: 404 });
     }
-
-    const hasLiveIMAP = !!(process.env.IMAP_USER && process.env.IMAP_PASSWORD && process.env.IMAP_HOST);
-
-    if (hasLiveIMAP) {
-      console.log(`Live IMAP configuration detected. Running live email sync for inbox ${inbox.id}...`);
-      const result = await syncLiveIMAPEmail(inbox.id);
-      return NextResponse.json({ success: true, isLive: true, ...result });
-    } else {
-      console.log(`No live IMAP configuration. Generating mock email for organization...`);
-      const result = await syncNewMockEmail(inbox.id);
-      return NextResponse.json({ success: true, isLive: false, syncedCount: 1, emails: [result.email] });
-    }
+    return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

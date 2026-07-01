@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import path from 'path';
 import { PrismaClient } from '../src/generated/prisma/client.js';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { PrismaPg } from '@prisma/adapter-pg';
 
 const ALL_TEMPLATE_KEYWORDS: Record<string, string[]> = {
   "NOT Paying Warranty Fee / Their Own Label": ["not paying warranty fee", "their own label", "waive fee", "waived fee"],
@@ -109,9 +109,10 @@ const ALL_TEMPLATE_KEYWORDS: Record<string, string[]> = {
 };
 
 async function main() {
-  const dbPath = path.resolve(process.cwd(), 'dev.db');
-  console.log('Database Path:', dbPath);
-  const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` });
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set.');
+  }
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
   const prisma = new PrismaClient({ adapter });
 
   try {
