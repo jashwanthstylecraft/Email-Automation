@@ -67,24 +67,24 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#08080a] bg-grid-pattern text-white">
       {/* Sidebar Navigation */}
-      <aside className="w-64 border-r border-white/5 bg-[#0b0b0f]/80 backdrop-blur-md flex flex-col justify-between flex-shrink-0">
+      <aside className="w-52 border-r border-white/5 bg-[#0b0b0f]/80 backdrop-blur-md flex flex-col justify-between flex-shrink-0">
         <div>
-          <div className="h-20 flex items-center px-6 border-b border-white/5 gap-3 group cursor-pointer">
-            <div className="p-2 bg-violet-500/10 border border-violet-500/20 rounded-lg transition-all duration-300 group-hover:scale-110 group-hover:border-violet-500/40 group-hover:shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-              <Mail className="w-5 h-5 text-violet-400 transition-transform duration-500 group-hover:rotate-12" />
+          <div className="h-16 flex items-center px-4 border-b border-white/5 gap-2.5 group cursor-pointer">
+            <div className="p-1.5 bg-violet-500/10 border border-violet-500/20 rounded-lg transition-all duration-300 group-hover:scale-110 group-hover:border-violet-500/40 group-hover:shadow-[0_0_15px_rgba(139,92,246,0.3)]">
+              <Mail className="w-4 h-4 text-violet-400 transition-transform duration-500 group-hover:rotate-12" />
             </div>
-            <div>
-              <h1 className="font-extrabold text-xs uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-200 transition-colors group-hover:from-violet-300 group-hover:to-white">
+            <div className="min-w-0">
+              <h1 className="font-extrabold text-[11px] uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-200 transition-colors group-hover:from-violet-300 group-hover:to-white truncate">
                 StyleCraft
               </h1>
-              <p className="text-[8px] text-gray-500 uppercase tracking-widest font-bold transition-all group-hover:text-violet-400">
+              <p className="text-[7px] text-gray-500 uppercase tracking-widest font-bold transition-all group-hover:text-violet-400 truncate">
                 Email Automation
               </p>
             </div>
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-4 space-y-1">
+          <nav className="p-2.5 space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.path;
@@ -92,14 +92,14 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                 <Link
                   key={item.path}
                   href={item.path}
-                  className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all ${
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
                     isActive
                       ? 'bg-violet-600/10 border border-violet-500/20 text-white font-medium shadow-inner'
                       : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
                   }`}
                 >
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-violet-500' : 'text-gray-400'}`} />
-                  {item.name}
+                  <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-violet-500' : 'text-gray-400'}`} />
+                  <span className="truncate">{item.name}</span>
                 </Link>
               );
             })}
@@ -107,7 +107,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </div>
 
         {/* User profile / Logout */}
-        <div className="p-4 border-t border-white/5 bg-black/20">
+        <div className="p-3 border-t border-white/5 bg-black/20">
           <div className="flex items-center justify-between">
             <div className="min-w-0 mr-2">
               <p className="text-sm font-semibold truncate">{user.name}</p>

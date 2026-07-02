@@ -326,7 +326,7 @@ export default function InboxPage() {
   return (
     <div className="flex h-[calc(100vh-10rem)] w-full gap-6 text-xs">
       {/* Mailbox + Classification sidebar */}
-      <div className="w-48 flex-shrink-0 flex flex-col gap-4">
+      <div className="w-36 flex-shrink-0 flex flex-col gap-4">
         {/* Mailbox folders (regular mail-client sections) */}
         <div className="flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
           <div className="p-4 border-b border-white/5 bg-[#121217]/30">
@@ -342,7 +342,8 @@ export default function InboxPage() {
                 <button
                   key={tab.value}
                   onClick={() => setActiveFilter(tab.value)}
-                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
+                  title={tab.label}
+                  className={`w-full flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-left transition-colors cursor-pointer ${
                     activeFilter === tab.value
                       ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
                       : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
@@ -402,7 +403,7 @@ export default function InboxPage() {
       </div>
 
       {/* Left panel: list of emails */}
-      <div className="w-1/3 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
+      <div className="w-72 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
         {/* Sync Controls Header */}
         <div className="p-4 border-b border-white/5 bg-[#121217]/30 flex justify-between items-center gap-3">
           <div>
