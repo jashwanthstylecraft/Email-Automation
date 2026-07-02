@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Plus, Edit, Trash, ToggleLeft, ToggleRight, Check, AlertTriangle,
@@ -23,6 +24,8 @@ export default function TemplatesPage() {
     templates, fetchTemplates, saveTemplate, deleteTemplate, isLoading, user
   } = useStore();
   const isAdmin = user?.role === 'Admin';
+  const searchParams = useSearchParams();
+  const activeQueryFilter = searchParams.get('active'); // "true" | "false" | null
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -87,7 +90,7 @@ export default function TemplatesPage() {
       active,
       notes,
     });
-    setSaveToast('Keywords saved');
+    setSaveToast(editingId ? 'Template updated' : 'Template created');
     setTimeout(() => setSaveToast(null), 2500);
     setName('');
     setSubject('');
@@ -383,19 +386,26 @@ export default function TemplatesPage() {
         
         {/* Templates List */}
         <div className="lg:col-span-2 space-y-4">
-          <h3 className="text-sm font-semibold text-gray-300">Active Templates List</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-300">
+              {activeQueryFilter === 'true' ? 'Active Templates' : activeQueryFilter === 'false' ? 'Disabled Templates' : 'All Templates'}
+            </h3>
+            {activeQueryFilter && (
+              <a href="/templates" className="text-[10px] text-violet-400 hover:text-violet-300 transition-colors">Clear filter ×</a>
+            )}
+          </div>
           {isLoading && templates.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-violet-400" />
               Loading templates...
             </div>
-          ) : templates.length === 0 ? (
+          ) : templates.filter(t => activeQueryFilter === null || String(t.active !== false) === activeQueryFilter).length === 0 ? (
             <div className="glass-panel p-8 text-center text-gray-500 border border-white/5 rounded-xl bg-[#0b0b0f]/60">
               No response templates seeded yet. Upload your response document to bootstrap them automatically.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {templates.map((tmpl) => {
+              {templates.filter(t => activeQueryFilter === null || String(t.active !== false) === activeQueryFilter).map((tmpl) => {
                 const feedbackLogs = getTemplateFeedback(tmpl.id);
                 return (
                   <div key={tmpl.id} className={`glass-panel p-5 rounded-xl border flex flex-col justify-between bg-[#0b0b0f]/60 transition-all ${

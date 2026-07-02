@@ -270,7 +270,37 @@ export async function GET(request: Request) {
       orderBy: { _count: { id: 'desc' } },
       take: 5,
     });
-    const topSenders = topSendersGroup.map(s => ({ sender: s.sender, count: s._count.id }));
+    const topSenderCustomers = await prisma.customer.findMany({
+      where: { organizationId: orgId, email: { in: topSendersGroup.map(s => s.sender) } },
+      select: { id: true, email: true },
+    });
+    const topSenders = topSendersGroup.map(s => ({
+      sender: s.sender,
+      count: s._count.id,
+      customerId: topSenderCustomers.find(c => c.email === s.sender)?.id || null,
+    }));
+
+    // 10. Edited Drafts
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfWeek = new Date();
+    startOfWeek.setDate(startOfWeek.getDate() - 7);
+
+    const editedDraftsWhere = { wasEdited: true, email: { organizationId: orgId } };
+    const editedDraftsCount = await prisma.autoReply.count({ where: editedDraftsWhere });
+    const editedTodayCount = await prisma.autoReply.count({ where: { ...editedDraftsWhere, editedAt: { gte: startOfToday } } });
+    const editedThisWeekCount = await prisma.autoReply.count({ where: { ...editedDraftsWhere, editedAt: { gte: startOfWeek } } });
+    const draftsWaitingApproval = await prisma.autoReply.count({ where: { status: 'DRAFT', email: { organizationId: orgId } } });
+    const draftsEditedNotSent = await prisma.autoReply.count({ where: { ...editedDraftsWhere, status: 'DRAFT' } });
+
+    const editedByGroup = await prisma.autoReply.groupBy({
+      by: ['editedBy'],
+      where: { ...editedDraftsWhere, editedBy: { not: null } },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 5,
+    });
+    const editedByUser = editedByGroup.map(g => ({ user: g.editedBy, count: g._count.id }));
 
     // 10. Recent changes & activity feed (from the audit log)
     const recentChanges = await prisma.auditLog.findMany({
@@ -303,6 +333,12 @@ export async function GET(request: Request) {
         disabledTemplatesCount,
         internalNotesCount,
         topSenders,
+        editedDraftsCount,
+        editedTodayCount,
+        editedThisWeekCount,
+        draftsWaitingApproval,
+        draftsEditedNotSent,
+        editedByUser,
       },
       charts: {
         emailsPerDay,

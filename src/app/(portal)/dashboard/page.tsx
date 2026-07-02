@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Mail, Send, Clock, AlertTriangle, Sliders, Sparkles, ArrowRight, Activity, Edit3, MessageSquare, ShieldCheck,
@@ -14,6 +15,7 @@ import {
 const POLL_INTERVAL_MS = 15000;
 
 export default function DashboardPage() {
+  const router = useRouter();
   const {
     dashboardMetrics, dashboardCharts, recentActivity, recentFailedMatches, recentChanges,
     fetchDashboard, user, isDashboardLoading, isDashboardRefreshing, dashboardError, dashboardUpdatedAt
@@ -65,6 +67,7 @@ export default function DashboardPage() {
       icon: Mail,
       color: 'text-blue-400',
       bg: 'bg-blue-500/10 border-blue-500/20',
+      href: '/inbox',
     },
     {
       title: 'Drafts Generated',
@@ -72,6 +75,15 @@ export default function DashboardPage() {
       icon: Edit3,
       color: 'text-violet-300',
       bg: 'bg-violet-500/10 border-violet-500/20',
+      href: '/inbox?status=UNREAD',
+    },
+    {
+      title: 'Edited Drafts',
+      value: dashboardMetrics.editedDraftsCount || 0,
+      icon: Edit3,
+      color: 'text-cyan-400',
+      bg: 'bg-cyan-500/10 border-cyan-500/20',
+      href: '/edited-drafts',
     },
     {
       title: 'Replies Sent',
@@ -79,6 +91,7 @@ export default function DashboardPage() {
       icon: Send,
       color: 'text-emerald-400',
       bg: 'bg-emerald-500/10 border-emerald-500/20',
+      href: '/inbox?status=REPLIED',
     },
     {
       title: 'Manual Review Count',
@@ -86,6 +99,7 @@ export default function DashboardPage() {
       icon: Clock,
       color: 'text-amber-400',
       bg: 'bg-amber-500/10 border-amber-500/20',
+      href: '/inbox?status=WAITING',
     },
     {
       title: 'Rejected Drafts',
@@ -93,6 +107,7 @@ export default function DashboardPage() {
       icon: AlertTriangle,
       color: 'text-red-400',
       bg: 'bg-red-500/10 border-red-500/20',
+      href: '/inbox?status=WAITING',
     },
     {
       title: 'Active Rules',
@@ -100,6 +115,7 @@ export default function DashboardPage() {
       icon: Sliders,
       color: 'text-violet-400',
       bg: 'bg-violet-500/10 border-violet-500/20',
+      href: '/rules',
     },
     {
       title: 'Failed Matches',
@@ -115,6 +131,7 @@ export default function DashboardPage() {
       icon: ThumbsDown,
       color: 'text-amber-400',
       bg: 'bg-amber-500/10 border-amber-500/20',
+      href: '/failed-matches',
     },
     {
       title: 'Active Templates',
@@ -122,6 +139,7 @@ export default function DashboardPage() {
       icon: ToggleRight,
       color: 'text-emerald-400',
       bg: 'bg-emerald-500/10 border-emerald-500/20',
+      href: '/templates?active=true',
     },
     {
       title: 'Disabled Templates',
@@ -129,6 +147,7 @@ export default function DashboardPage() {
       icon: ToggleLeft,
       color: 'text-gray-400',
       bg: 'bg-gray-500/10 border-gray-500/20',
+      href: '/templates?active=false',
     },
     {
       title: 'Internal Notes',
@@ -141,11 +160,11 @@ export default function DashboardPage() {
   ];
 
   const subMetrics = [
-    { name: 'Template Match Accuracy', value: dashboardMetrics.templateMatchAccuracy || '100%', icon: ShieldCheck },
-    { name: 'User Feedback Count', value: dashboardMetrics.userFeedbackCount || 0, icon: MessageSquare },
-    { name: 'AI Average Confidence', value: dashboardMetrics.avgConfidence, icon: Sparkles },
-    { name: 'Automation Success Rate', value: dashboardMetrics.automationRate, icon: Sliders },
-    { name: 'Last Matched Keyword', value: dashboardMetrics.lastMatchedKeyword || 'None yet', icon: Sliders },
+    { name: 'Template Match Accuracy', value: dashboardMetrics.templateMatchAccuracy || '100%', icon: ShieldCheck, href: '/templates' },
+    { name: 'User Feedback Count', value: dashboardMetrics.userFeedbackCount || 0, icon: MessageSquare, href: '/failed-matches' },
+    { name: 'AI Average Confidence', value: dashboardMetrics.avgConfidence, icon: Sparkles, href: '/inbox' },
+    { name: 'Automation Success Rate', value: dashboardMetrics.automationRate, icon: Sliders, href: '/inbox?status=REPLIED' },
+    { name: 'Last Matched Keyword', value: dashboardMetrics.lastMatchedKeyword || 'None yet', icon: Sliders, href: '/templates' },
   ];
 
   const isDataEmpty = dashboardMetrics.totalEmails === 0;
@@ -217,7 +236,7 @@ export default function DashboardPage() {
         {subMetrics.map((sm) => {
           const Icon = sm.icon;
           return (
-            <div key={sm.name} className="glass-panel p-4 rounded-xl border border-white/5 flex items-center justify-between bg-[#0b0b0f]/60">
+            <Link key={sm.name} href={sm.href} className="glass-panel p-4 rounded-xl border border-white/5 hover:border-violet-500/30 transition-colors flex items-center justify-between bg-[#0b0b0f]/60">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/5 rounded-lg">
                   <Icon className="w-4 h-4 text-violet-400" />
@@ -227,7 +246,7 @@ export default function DashboardPage() {
                   <p className="text-xs font-semibold text-white mt-0.5">{sm.value}</p>
                 </div>
               </div>
-            </div>
+            </Link>
           );
         })}
       </div>
@@ -343,7 +362,7 @@ export default function DashboardPage() {
                         SPAM: 'bg-gray-500/10 border-gray-500/20 text-gray-400',
                       };
                       return (
-                        <tr key={act.id} className="hover:bg-white/5 transition-colors">
+                        <tr key={act.id} onClick={() => router.push(`/inbox?emailId=${act.id}`)} className="hover:bg-white/5 transition-colors cursor-pointer">
                           <td className="py-3 pr-4 truncate font-medium text-white max-w-[120px]">{act.sender}</td>
                           <td className="py-3 pr-4 truncate max-w-[200px]">{act.subject}</td>
                           <td className="py-3 pr-4">{act.category}</td>
@@ -404,10 +423,14 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-2 font-mono text-[10px]">
                   {dashboardMetrics.topSenders.map((s: any) => (
-                    <div key={s.sender} className="flex justify-between items-center bg-white/5 p-2.5 rounded border border-white/5">
+                    <Link
+                      key={s.sender}
+                      href={s.customerId ? `/customers/${s.customerId}` : `/customers?search=${encodeURIComponent(s.sender)}`}
+                      className="flex justify-between items-center bg-white/5 hover:bg-white/10 p-2.5 rounded border border-white/5 transition-colors"
+                    >
                       <span className="text-violet-300 font-semibold truncate max-w-[70%]">{s.sender}</span>
                       <span className="px-2 py-0.5 rounded bg-violet-600/10 border border-violet-500/20 text-violet-400 font-bold">{s.count} emails</span>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               )}
@@ -422,15 +445,22 @@ export default function DashboardPage() {
                 <p className="text-gray-500 text-[10px] py-4 text-center">No activity recorded yet.</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {recentChanges.map((c: any) => (
-                    <div key={c.id} className="bg-white/5 p-2.5 rounded border border-white/5 text-[10px]">
-                      <div className="flex justify-between items-center gap-2">
-                        <span className="text-gray-300 font-semibold truncate max-w-[75%]">{c.userEmail || 'System'}</span>
-                        <span className="text-gray-500 text-[9px] flex-shrink-0">{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
-                      <p className="text-gray-500 mt-1 leading-relaxed truncate">{c.details}</p>
-                    </div>
-                  ))}
+                  {recentChanges.map((c: any) => {
+                    const link =
+                      c.entityType === 'email' && c.entityId ? `/inbox?emailId=${c.entityId}` :
+                      c.entityType === 'note' ? '/notes' :
+                      c.entityType === 'template' || c.entityType === 'keyword' || c.entityType === 'rule' ? '/templates' :
+                      '/audit-logs';
+                    return (
+                      <Link key={c.id} href={link} className="block bg-white/5 hover:bg-white/10 p-2.5 rounded border border-white/5 text-[10px] transition-colors">
+                        <div className="flex justify-between items-center gap-2">
+                          <span className="text-gray-300 font-semibold truncate max-w-[75%]">{c.userEmail || 'System'}</span>
+                          <span className="text-gray-500 text-[9px] flex-shrink-0">{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <p className="text-gray-500 mt-1 leading-relaxed truncate">{c.details}</p>
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>

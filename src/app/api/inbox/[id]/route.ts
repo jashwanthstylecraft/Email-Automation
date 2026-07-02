@@ -68,7 +68,8 @@ export async function GET(
               data: {
                 emailId: email.id,
                 status: 'DRAFT',
-                responseBody: replyBody
+                responseBody: replyBody,
+                originalDraftBody: replyBody,
               }
             });
           }
@@ -177,18 +178,29 @@ export async function POST(
       const before = draft?.responseBody || null;
 
       if (draft) {
-        // Update existing draft
+        // Update existing draft. Preserve the true AI-original text (falls
+        // back to whatever was there before if this draft predates the
+        // originalDraftBody column) so "Edited Drafts" can always show a
+        // clean before/after even after multiple rounds of edits.
         await prisma.autoReply.update({
           where: { id: draft.id },
-          data: { responseBody },
+          data: {
+            responseBody,
+            originalDraftBody: draft.originalDraftBody || before,
+            wasEdited: true,
+            editedBy: user?.email || null,
+            editedAt: new Date(),
+          },
         });
       } else {
-        // Create new draft
+        // Create new draft (e.g. a manual review case with no AI draft yet)
         await prisma.autoReply.create({
           data: {
             emailId: id,
             status: 'DRAFT',
             responseBody,
+            originalDraftBody: null,
+            wasEdited: false,
           },
         });
       }

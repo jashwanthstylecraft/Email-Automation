@@ -178,6 +178,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
                 emailId: processedEmail.id,
                 status: 'DRAFT',
                 responseBody: aiResult.draftReply!,
+                originalDraftBody: aiResult.draftReply!,
               },
             });
           }

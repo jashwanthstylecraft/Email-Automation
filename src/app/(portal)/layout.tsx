@@ -6,7 +6,8 @@ import { useStore } from '@/lib/store';
 import { CommandMenu } from '@/components/command-menu';
 import {
   LayoutGrid, Mail, Sliders, FileText, Settings as SettingsIcon,
-  Terminal, LogOut, RefreshCw, Wand2, Activity, StickyNote, XCircle
+  Terminal, LogOut, RefreshCw, Wand2, Activity, StickyNote, XCircle,
+  ShieldQuestion, Edit3, Users, History
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -55,59 +56,61 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutGrid },
     { name: 'Inbox Queue', path: '/inbox', icon: Mail },
+    { name: 'Manual Review', path: '/inbox?status=WAITING', icon: ShieldQuestion },
     { name: 'Failed Matches', path: '/failed-matches', icon: XCircle },
+    { name: 'Edited Drafts', path: '/edited-drafts', icon: Edit3 },
     { name: 'Automation Rules', path: '/rules', icon: Sliders },
     { name: 'Reply Templates', path: '/templates', icon: Terminal },
-    { name: 'Automation Logs', path: '/logs', icon: Activity },
     { name: 'Knowledge Base', path: '/knowledge', icon: FileText },
     { name: 'Internal Notes', path: '/notes', icon: StickyNote },
+    { name: 'Customers', path: '/customers', icon: Users },
+    { name: 'Automation Logs', path: '/logs', icon: Activity },
+    { name: 'Audit Logs', path: '/audit-logs', icon: History },
     { name: 'AI Prompt Settings', path: '/settings', icon: SettingsIcon },
   ];
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#08080a] bg-grid-pattern text-white">
       {/* Sidebar Navigation */}
-      <aside className="w-52 border-r border-white/5 bg-[#0b0b0f]/80 backdrop-blur-md flex flex-col justify-between flex-shrink-0">
-        <div>
-          <div className="h-16 flex items-center px-4 border-b border-white/5 gap-2.5 group cursor-pointer">
-            <div className="p-1.5 bg-violet-500/10 border border-violet-500/20 rounded-lg transition-all duration-300 group-hover:scale-110 group-hover:border-violet-500/40 group-hover:shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-              <Mail className="w-4 h-4 text-violet-400 transition-transform duration-500 group-hover:rotate-12" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-extrabold text-[11px] uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-200 transition-colors group-hover:from-violet-300 group-hover:to-white truncate">
-                StyleCraft
-              </h1>
-              <p className="text-[7px] text-gray-500 uppercase tracking-widest font-bold transition-all group-hover:text-violet-400 truncate">
-                Email Automation
-              </p>
-            </div>
+      <aside className="w-52 border-r border-white/5 bg-[#0b0b0f]/80 backdrop-blur-md flex flex-col flex-shrink-0">
+        <div className="h-16 flex items-center px-4 border-b border-white/5 gap-2.5 group cursor-pointer flex-shrink-0">
+          <div className="p-1.5 bg-violet-500/10 border border-violet-500/20 rounded-lg transition-all duration-300 group-hover:scale-110 group-hover:border-violet-500/40 group-hover:shadow-[0_0_15px_rgba(139,92,246,0.3)]">
+            <Mail className="w-4 h-4 text-violet-400 transition-transform duration-500 group-hover:rotate-12" />
           </div>
-
-          {/* Navigation Links */}
-          <nav className="p-2.5 space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
-                    isActive
-                      ? 'bg-violet-600/10 border border-violet-500/20 text-white font-medium shadow-inner'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-violet-500' : 'text-gray-400'}`} />
-                  <span className="truncate">{item.name}</span>
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="min-w-0">
+            <h1 className="font-extrabold text-[11px] uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-200 transition-colors group-hover:from-violet-300 group-hover:to-white truncate">
+              StyleCraft
+            </h1>
+            <p className="text-[7px] text-gray-500 uppercase tracking-widest font-bold transition-all group-hover:text-violet-400 truncate">
+              Email Automation
+            </p>
+          </div>
         </div>
 
+        {/* Navigation Links */}
+        <nav className="flex-1 overflow-y-auto p-2.5 space-y-1 min-h-0">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.path.split('?')[0];
+            return (
+              <Link
+                key={item.path}
+                href={item.path}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
+                  isActive
+                    ? 'bg-violet-600/10 border border-violet-500/20 text-white font-medium shadow-inner'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-violet-500' : 'text-gray-400'}`} />
+                <span className="truncate">{item.name}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
         {/* User profile / Logout */}
-        <div className="p-3 border-t border-white/5 bg-black/20">
+        <div className="p-3 border-t border-white/5 bg-black/20 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="min-w-0 mr-2">
               <p className="text-sm font-semibold truncate">{user.name}</p>

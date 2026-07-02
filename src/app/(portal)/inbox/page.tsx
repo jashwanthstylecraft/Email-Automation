@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame, Ban,
@@ -18,8 +19,9 @@ export default function InboxPage() {
     dashboardCharts
   } = useStore();
 
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState('ALL');
+  const [activeFilter, setActiveFilter] = useState(searchParams.get('status') || 'ALL');
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [replyText, setReplyText] = useState('');
   const [isEditingDraft, setIsEditingDraft] = useState(false);
@@ -61,6 +63,20 @@ export default function InboxPage() {
       .catch(() => setThreadContext([]));
   }, [selectedEmail?.id]);
 
+  // Edit history for this email's draft (audit log entries)
+  const [editHistory, setEditHistory] = useState<any[]>([]);
+  const [showEditHistory, setShowEditHistory] = useState(false);
+  useEffect(() => {
+    if (!selectedEmail) {
+      setEditHistory([]);
+      return;
+    }
+    fetch(`/api/logs?entityType=email&action=DRAFT_EDITED`)
+      .then(res => res.json())
+      .then(data => setEditHistory((data.logs || []).filter((l: any) => l.entityId === selectedEmail.id)))
+      .catch(() => setEditHistory([]));
+  }, [selectedEmail?.id]);
+
   useEffect(() => {
     fetchEmails({ status: activeFilter, search, category: activeCategory });
     fetchTemplates();
@@ -70,6 +86,14 @@ export default function InboxPage() {
   useEffect(() => {
     fetchDashboard({ silent: true });
   }, []);
+
+  // Deep-link support: /inbox?emailId=... (e.g. from a customer profile) auto-selects that email once loaded
+  useEffect(() => {
+    const emailId = searchParams.get('emailId');
+    if (!emailId || emails.length === 0) return;
+    const target = emails.find(e => e.id === emailId);
+    if (target) selectEmail(target);
+  }, [searchParams, emails]);
 
   useEffect(() => {
     if (selectedEmail) {
@@ -119,24 +143,28 @@ export default function InboxPage() {
   };
 
   const handleSyncInbox = async () => {
-    await syncInbox();
+    const result = await syncInbox();
     setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    if (result.success) {
+      showSendToast(
+        result.syncedCount
+          ? `Sync complete — ${result.syncedCount} new email${result.syncedCount === 1 ? '' : 's'} analyzed`
+          : 'Sync complete — no new emails'
+      );
+    } else {
+      showSendToast(`Sync failed: ${result.error || 'unknown error'}`);
+    }
   };
 
-  const handleAssignTemplate = async (templateId: string) => {
-    if (!selectedEmail) return;
-    const selectedTmpl = templates.find(t => t.id === templateId);
-    if (!selectedTmpl) return;
-
-    // 1. Interpolate variables for the selected template
-    const customerName = selectedEmail.sender.split('@')[0].split('.')[0].replace(/^\w/, (c) => c.toUpperCase());
+  const interpolateTemplateBody = (tmpl: any, email: typeof selectedEmail) => {
+    if (!email) return tmpl.body;
+    const customerName = email.sender.split('@')[0].split('.')[0].replace(/^\w/, (c: string) => c.toUpperCase());
     const closing = 'Regards,\nStyleCraft US Support Team';
-    let newBody = selectedTmpl.body;
+    let newBody = tmpl.body;
     newBody = newBody.replace(/\{\{customer_name\}\}/g, customerName);
-    newBody = newBody.replace(/\{\{ticket_id\}\}/g, selectedEmail.id.slice(0, 8));
+    newBody = newBody.replace(/\{\{ticket_id\}\}/g, email.id.slice(0, 8));
     newBody = newBody.replace(/\{\{closing\}\}/g, closing);
 
-    // Dynamic greeting/signature check
     const hasGreeting = newBody.trim().startsWith('Hi') || newBody.trim().startsWith('Hello') || newBody.trim().startsWith('Dear') || newBody.trim().startsWith('I hope');
     if (!hasGreeting) {
       newBody = `Hello ${customerName},\n\n` + newBody;
@@ -145,6 +173,15 @@ export default function InboxPage() {
     if (!hasClosing) {
       newBody = newBody + `\n\n${closing}`;
     }
+    return newBody;
+  };
+
+  const handleAssignTemplate = async (templateId: string) => {
+    if (!selectedEmail) return;
+    const selectedTmpl = templates.find(t => t.id === templateId);
+    if (!selectedTmpl) return;
+
+    const newBody = interpolateTemplateBody(selectedTmpl, selectedEmail);
 
     // Set local state instantly
     setReplyText(newBody);
@@ -206,9 +243,18 @@ export default function InboxPage() {
         })
       });
 
-      alert('Template updated successfully!');
+      showSendToast('Template updated with your edits');
       fetchTemplates();
       await fetchDashboard();
+    }
+  };
+
+  const handleResetToTemplate = () => {
+    if (!selectedEmail || !selectedEmail.matchedTemplateId) return;
+    const matchedTmpl = templates.find(t => t.id === selectedEmail.matchedTemplateId);
+    if (!matchedTmpl) return;
+    if (confirm('Discard your edits and reset the draft back to the original template text?')) {
+      setReplyText(interpolateTemplateBody(matchedTmpl, selectedEmail));
     }
   };
 
@@ -230,9 +276,12 @@ export default function InboxPage() {
     if (res.ok) {
       setFeedbackSubmitted(true);
       setFeedbackMsg(`Feedback "${feedbackType}" submitted! Match logs updated successfully.`);
+      showSendToast(feedbackType === 'Add New Keyword to This Template' ? 'Keyword added to template' : `Feedback recorded: ${feedbackType}`);
       fetchTemplates();
       await fetchEmails({ status: activeFilter, search });
       await fetchDashboard();
+    } else {
+      showSendToast('Failed to submit feedback — please try again');
     }
   };
 
@@ -829,12 +878,26 @@ export default function InboxPage() {
               {/* AI Draft Section */}
               {(latestDraft || replyText) && !isCustomMode && (
                 <div>
-                  <div className="px-3 py-1.5 bg-violet-600/10 border border-violet-500/20 rounded-t-xl text-[10px] font-semibold text-violet-300 uppercase tracking-wider flex justify-between items-center">
-                    <span className="flex items-center gap-1.5 truncate max-w-[80%]">
+                  {selectedEmail.summary?.includes('Similar reply already sent') && (
+                    <div className="mb-2 p-2.5 bg-amber-600/10 border border-amber-500/20 rounded-lg flex items-center gap-2 text-amber-300">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="text-[11px] font-semibold">⚠️ Similar reply already sent to this customer within the last 24 hours — review carefully before sending again.</span>
+                    </div>
+                  )}
+                  <div className="px-3 py-1.5 bg-violet-600/10 border border-violet-500/20 rounded-t-xl text-[10px] font-semibold text-violet-300 uppercase tracking-wider flex justify-between items-center flex-wrap gap-2">
+                    <span className="flex items-center gap-1.5 truncate max-w-[60%]">
                       <ShieldCheck className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
                       AI Response Draft (Auto Generated) — Chosen: "{currentlyMatchedTemplateName}"
+                      {latestDraft?.wasEdited && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 text-[9px] normal-case font-bold">Edited Draft</span>
+                      )}
                     </span>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 items-center">
+                      {editHistory.length > 0 && (
+                        <button onClick={() => setShowEditHistory(!showEditHistory)} className="text-[10px] text-gray-400 hover:text-white font-semibold cursor-pointer normal-case">
+                          {showEditHistory ? 'Hide' : 'Show'} Edit History ({editHistory.length})
+                        </button>
+                      )}
                       {isEditingDraft ? (
                         <>
                           <button onClick={handleSaveDraft} className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer">
@@ -843,6 +906,11 @@ export default function InboxPage() {
                           {selectedEmail.matchedTemplateId && (
                             <button onClick={handleSaveTemplateUpdate} className="text-xs text-violet-300 hover:text-violet-200 font-semibold flex items-center gap-1 cursor-pointer">
                               <Save className="w-3 h-3" /> Update Response Template
+                            </button>
+                          )}
+                          {selectedEmail.matchedTemplateId && (
+                            <button onClick={handleResetToTemplate} className="text-xs text-amber-300 hover:text-amber-200 font-semibold cursor-pointer">
+                              Reset to Template
                             </button>
                           )}
                           <button onClick={() => { setReplyText(latestDraft.responseBody); setIsEditingDraft(false); }} className="text-xs text-gray-400 hover:text-white font-semibold cursor-pointer">
@@ -867,6 +935,23 @@ export default function InboxPage() {
                     ) : (
                       <div className="p-5 text-xs text-violet-200 whitespace-pre-wrap leading-relaxed font-sans">
                         {replyText}
+                      </div>
+                    )}
+                    {showEditHistory && editHistory.length > 0 && (
+                      <div className="border-t border-violet-500/20 p-4 space-y-2 bg-black/20">
+                        <p className="text-[9px] text-gray-500 uppercase font-semibold tracking-wider">Edit History</p>
+                        {editHistory.map((h: any) => (
+                          <div key={h.id} className="text-[10px] bg-white/5 p-2.5 rounded border border-white/5">
+                            <div className="flex justify-between">
+                              <span className="text-white font-semibold">{h.userEmail || 'Unknown'}</span>
+                              <span className="text-gray-500">{new Date(h.createdAt).toLocaleString()}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 mt-1.5">
+                              <p className="text-gray-500 bg-black/20 p-1.5 rounded max-h-16 overflow-y-auto whitespace-pre-wrap">{h.beforeValue}</p>
+                              <p className="text-emerald-300 bg-black/20 p-1.5 rounded max-h-16 overflow-y-auto whitespace-pre-wrap">{h.afterValue}</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

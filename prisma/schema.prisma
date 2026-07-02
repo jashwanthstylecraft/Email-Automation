@@ -116,15 +116,19 @@ model Email {
 }
 
 model AutoReply {
-  id           String    @id @default(uuid())
-  emailId      String
-  email        Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
-  status       String    @default("DRAFT") // DRAFT, PENDING_APPROVAL, SENT, REJECTED
-  responseBody String
-  sentAt       DateTime?
-  approvedBy   String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                String    @id @default(uuid())
+  emailId           String
+  email             Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  status            String    @default("DRAFT") // DRAFT, PENDING_APPROVAL, SENT, REJECTED
+  responseBody      String
+  originalDraftBody String?   // the AI-generated text before any human edits
+  wasEdited         Boolean   @default(false)
+  editedBy          String?   // email of the last person who edited this draft
+  editedAt          DateTime?
+  sentAt            DateTime?
+  approvedBy        String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 }
 
 model Rule {

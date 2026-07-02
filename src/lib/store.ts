@@ -109,7 +109,7 @@ interface AppState {
   fetchDashboard: (opts?: { silent?: boolean }) => Promise<void>;
   fetchEmails: (filters?: any) => Promise<void>;
   selectEmail: (email: Email | null) => void;
-  syncInbox: () => Promise<void>;
+  syncInbox: () => Promise<{ success: boolean; error?: string; syncedCount?: number; isLive?: boolean }>;
   approveDraft: (emailId: string) => Promise<void>;
   rejectDraft: (emailId: string) => Promise<void>;
   saveDraftEdits: (emailId: string, text: string) => Promise<void>;
@@ -141,6 +141,12 @@ interface AppState {
   failedMatches: any[];
   fetchFailedMatches: (filters?: { status?: string; templateId?: string; sender?: string }) => Promise<void>;
   updateFailedMatch: (id: string, data: { status?: string; notes?: string }) => Promise<void>;
+  editedDrafts: any[];
+  fetchEditedDrafts: (filters?: { status?: string; editedBy?: string; sender?: string }) => Promise<void>;
+  customers: any[];
+  fetchCustomers: (search?: string) => Promise<void>;
+  auditLogsFull: any[];
+  fetchAuditLogsFull: (filters?: { userId?: string; action?: string; entityType?: string }) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -166,6 +172,9 @@ export const useStore = create<AppState>((set, get) => ({
   auditLogs: [],
   notes: [],
   failedMatches: [],
+  editedDrafts: [],
+  customers: [],
+  auditLogsFull: [],
 
   fetchSession: async () => {
     try {
@@ -258,7 +267,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   syncInbox: async () => {
     const user = get().user;
-    if (!user) return;
+    if (!user) return { success: false, error: 'Not logged in' };
     set({ isLoading: true });
     try {
       const res = await fetch('/api/inbox', {
@@ -266,13 +275,18 @@ export const useStore = create<AppState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orgId: user.organizationId }),
       });
+      const data = await res.json();
       if (res.ok) {
         await get().fetchEmails();
         await get().fetchDashboard();
+        set({ isLoading: false });
+        return { success: true, syncedCount: data.syncedCount, isLive: data.isLive };
       }
-      set({ isLoading: false });
+      set({ isLoading: false, error: data.error });
+      return { success: false, error: data.error || 'Sync failed' };
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
+      return { success: false, error: err.message };
     }
   },
 
@@ -676,6 +690,50 @@ export const useStore = create<AppState>((set, get) => ({
       if (res.ok) {
         await get().fetchFailedMatches();
       }
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  fetchEditedDrafts: async (filters = {}) => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const params = new URLSearchParams({ orgId: user.organizationId });
+      if (filters.status) params.set('status', filters.status);
+      if (filters.editedBy) params.set('editedBy', filters.editedBy);
+      if (filters.sender) params.set('sender', filters.sender);
+      const res = await fetch(`/api/edited-drafts?${params}`);
+      const data = await res.json();
+      set({ editedDrafts: data.editedDrafts || [] });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  fetchCustomers: async (search) => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const params = new URLSearchParams({ orgId: user.organizationId });
+      if (search) params.set('search', search);
+      const res = await fetch(`/api/customers?${params}`);
+      const data = await res.json();
+      set({ customers: data.customers || [] });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  fetchAuditLogsFull: async (filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.userId) params.set('userId', filters.userId);
+      if (filters.action) params.set('action', filters.action);
+      if (filters.entityType) params.set('entityType', filters.entityType);
+      const res = await fetch(`/api/logs?${params}`);
+      const data = await res.json();
+      set({ auditLogsFull: data.logs || [] });
     } catch (err: any) {
       set({ error: err.message });
     }

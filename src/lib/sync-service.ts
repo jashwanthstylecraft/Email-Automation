@@ -137,6 +137,7 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
         emailId: processedEmail.id,
         status: 'DRAFT',
         responseBody: aiResult.draftReply!,
+        originalDraftBody: aiResult.draftReply!,
       },
     });
   }

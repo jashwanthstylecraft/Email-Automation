@@ -232,6 +232,7 @@ export async function processAutomationRules(emailId: string): Promise<any> {
         emailId: email.id,
         status: finalStatus,
         responseBody: replyBody,
+        originalDraftBody: replyBody,
         sentAt: finalStatus === 'SENT' ? new Date() : null,
       },
     });
