@@ -9,7 +9,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { user, fetchSession } = useStore();
   const [email, setEmail] = useState('jashwanthd@stylecraftus.com');
-  const [password, setPassword] = useState('password123');
+  const [password, setPassword] = useState('StyleCraft@123');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -60,7 +60,7 @@ export default function LoginPage() {
           Intelligent Email Automation
         </p>
         <p className="mt-2 text-center text-xs text-gray-400">
-          Demo Credentials Seeded: <span className="font-mono text-violet-300">jashwanthd@stylecraftus.com / password123</span>
+          Demo Credentials Seeded: <span className="font-mono text-violet-300">jashwanthd@stylecraftus.com / StyleCraft@123</span>
         </p>
       </div>
 

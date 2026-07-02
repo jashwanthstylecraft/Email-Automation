@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { runAIPipeline } from './ai-pipeline';
+import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
 
 const MOCK_INCOMING_TEMPLATES = [
   {
@@ -93,10 +94,20 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
     ? (templates.find(t => t.id === aiResult.matchedTemplateId)?.name || 'None')
     : 'None';
 
+  // 2b. Group this email under the sender's customer profile.
+  await upsertCustomerForEmail(inbox.organizationId, senderEmail, newEmail.id);
+
+  // 2c. Duplicate-send prevention: if this exact template was already sent
+  // to this sender within the last 24h, force manual review instead of
+  // silently auto-sending the same canned response again.
+  const isRecentDuplicate = await checkRecentDuplicateReply(inbox.organizationId, senderEmail, aiResult.matchedTemplateId ?? null);
+
   // 3. Update the Email record with AI classifications
-  const finalStatus = aiResult.spam 
-    ? 'SPAM' 
-    : (aiResult.aiConfidence >= 0.85 ? 'UNREAD' : 'WAITING');
+  const finalStatus = aiResult.spam
+    ? 'SPAM'
+    : isRecentDuplicate
+      ? 'WAITING'
+      : (aiResult.aiConfidence >= 0.85 ? 'UNREAD' : 'WAITING');
 
   const processedEmail = await prisma.email.update({
     where: { id: newEmail.id },
@@ -109,7 +120,9 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
       aiConfidence: aiResult.aiConfidence,
       spam: aiResult.spam,
       duplicate: aiResult.duplicate,
-      summary: aiResult.summary || 'None',
+      summary: isRecentDuplicate
+        ? `⚠️ Similar reply already sent to this customer within 24h. ${aiResult.summary || ''}`.trim()
+        : (aiResult.summary || 'None'),
       matchedTemplateId: aiResult.matchedTemplateId,
       aiProvider: aiResult.aiProvider,
       status: finalStatus,

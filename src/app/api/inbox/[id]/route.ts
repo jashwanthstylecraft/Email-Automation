@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendOutgoingMail } from '@/lib/mail-sender';
 import { parseKeywords, serializeKeywords } from '@/lib/keyword-engine';
+import { getCurrentUser, getClientIp } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
 
 export async function GET(
   request: Request,
@@ -16,6 +18,7 @@ export async function GET(
         autoReplies: {
           orderBy: { createdAt: 'desc' },
         },
+        customer: true,
       },
     });
 
@@ -28,7 +31,7 @@ export async function GET(
     if (!email.matchedTemplateId && email.status !== 'REPLIED') {
       const { runKeywordMatcher } = await import('@/lib/ai-pipeline');
       const match = await runKeywordMatcher(email.body, email.subject, email.organizationId);
-      
+
       if (match.matchedTemplateId) {
         const template = await prisma.template.findUnique({
           where: { id: match.matchedTemplateId }
@@ -74,7 +77,8 @@ export async function GET(
           const updated = await prisma.email.findUnique({
             where: { id },
             include: {
-              autoReplies: { orderBy: { createdAt: 'desc' } }
+              autoReplies: { orderBy: { createdAt: 'desc' } },
+              customer: true,
             }
           });
           if (updated) {
@@ -84,7 +88,19 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({ email });
+    // Thread/customer context: previous emails from the same sender, most recent first.
+    const threadContext = await prisma.email.findMany({
+      where: {
+        organizationId: email.organizationId,
+        sender: email.sender,
+        id: { not: email.id },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { id: true, subject: true, status: true, matchedTemplateId: true, createdAt: true },
+    });
+
+    return NextResponse.json({ email, threadContext });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -98,6 +114,8 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
     const { action, responseBody, status, assignedUserId } = body;
+    const user = await getCurrentUser();
+    const ip = getClientIp(request);
 
     const email = await prisma.email.findUnique({
       where: { id },
@@ -121,6 +139,7 @@ export async function POST(
         data: {
           status: 'SENT',
           sentAt: new Date(),
+          approvedBy: user?.email || null,
         },
       });
 
@@ -129,6 +148,10 @@ export async function POST(
         data: { status: 'REPLIED' },
       });
 
+      if (email.customerId) {
+        await prisma.customer.update({ where: { id: email.customerId }, data: { totalReplies: { increment: 1 } } });
+      }
+
       // Dispatch real email via SMTP
       try {
         await sendOutgoingMail(email.sender, email.subject, draft.responseBody);
@@ -136,12 +159,14 @@ export async function POST(
         console.error('Failed to send approved SMTP email:', sendErr);
       }
 
-      // Audit Log
-      await prisma.auditLog.create({
-        data: {
-          action: 'REPLY_APPROVED',
-          details: `Auto-reply draft approved and sent to ${email.sender}`,
-        },
+      await logAudit({
+        action: 'REPLY_APPROVED',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        afterValue: 'REPLIED',
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} approved and sent the auto-reply draft to ${email.sender}`,
       });
 
       return NextResponse.json({ success: true, message: 'Reply sent' });
@@ -149,6 +174,7 @@ export async function POST(
 
     if (action === 'EDIT_DRAFT') {
       const draft = email.autoReplies.find((r) => r.status === 'DRAFT');
+      const before = draft?.responseBody || null;
 
       if (draft) {
         // Update existing draft
@@ -167,6 +193,17 @@ export async function POST(
         });
       }
 
+      await logAudit({
+        action: 'DRAFT_EDITED',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        beforeValue: before,
+        afterValue: responseBody,
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} edited the draft reply for email from ${email.sender}`,
+      });
+
       return NextResponse.json({ success: true, message: 'Draft saved' });
     }
 
@@ -178,6 +215,7 @@ export async function POST(
           status: 'SENT',
           responseBody,
           sentAt: new Date(),
+          approvedBy: user?.email || null,
         },
       });
 
@@ -186,6 +224,10 @@ export async function POST(
         data: { status: 'REPLIED' },
       });
 
+      if (email.customerId) {
+        await prisma.customer.update({ where: { id: email.customerId }, data: { totalReplies: { increment: 1 } } });
+      }
+
       // Dispatch manual response email via SMTP
       try {
         await sendOutgoingMail(email.sender, email.subject, responseBody);
@@ -193,11 +235,14 @@ export async function POST(
         console.error('Failed to send custom SMTP email:', sendErr);
       }
 
-      await prisma.auditLog.create({
-        data: {
-          action: 'CUSTOM_REPLY_SENT',
-          details: `Custom manual response sent to ${email.sender}`,
-        },
+      await logAudit({
+        action: 'CUSTOM_REPLY_SENT',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        afterValue: responseBody,
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} sent a custom manual reply to ${email.sender}`,
       });
 
       return NextResponse.json({ success: true, message: 'Custom reply sent' });
@@ -217,11 +262,13 @@ export async function POST(
         data: { status: 'WAITING' }, // Stays in review queue
       });
 
-      await prisma.auditLog.create({
-        data: {
-          action: 'REPLY_REJECTED',
-          details: `Draft auto-reply for ${email.sender} rejected by operator`,
-        },
+      await logAudit({
+        action: 'REPLY_REJECTED',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} rejected the draft auto-reply for ${email.sender}`,
       });
 
       return NextResponse.json({ success: true, message: 'Draft rejected' });
@@ -232,6 +279,18 @@ export async function POST(
         where: { id },
         data: { status },
       });
+
+      await logAudit({
+        action: 'STATUS_CHANGED',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        beforeValue: email.status,
+        afterValue: status,
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} changed email status from ${email.status} to ${status}`,
+      });
+
       return NextResponse.json({ success: true, email: updated });
     }
 
@@ -244,6 +303,18 @@ export async function POST(
           aiConfidence: parseFloat(aiConfidence)
         },
       });
+
+      await logAudit({
+        action: 'TEMPLATE_REASSIGNED',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        beforeValue: email.matchedTemplateId,
+        afterValue: matchedTemplateId,
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} manually reassigned the template for email from ${email.sender}`,
+      });
+
       return NextResponse.json({ success: true, email: updated });
     }
 
@@ -257,7 +328,7 @@ export async function POST(
 
     if (action === 'SUBMIT_FEEDBACK') {
       const { feedbackType, feedbackNotes, approvedTemplateId, rejectedTemplateId, newKeyword } = body;
-      
+
       const updatedEmail = await prisma.email.update({
         where: { id },
         data: {
@@ -280,6 +351,15 @@ export async function POST(
               where: { id: targetTemplateId },
               data: { keywords: serializeKeywords(structured) }
             });
+            await logAudit({
+              action: 'KEYWORD_ADDED',
+              user,
+              entityType: 'keyword',
+              entityId: targetTemplateId,
+              afterValue: normalized,
+              ipAddress: ip,
+              details: `${user?.email || 'Unknown user'} added keyword "${normalized}" to template "${template.name}"`,
+            });
           }
         }
       }
@@ -288,6 +368,35 @@ export async function POST(
         await prisma.template.update({
           where: { id: targetTemplateId },
           data: { active: false }
+        });
+        await logAudit({
+          action: 'TEMPLATE_RULE_DISABLED',
+          user,
+          entityType: 'rule',
+          entityId: targetTemplateId,
+          beforeValue: 'active',
+          afterValue: 'disabled',
+          ipAddress: ip,
+          details: `${user?.email || 'Unknown user'} disabled the rule for template ${targetTemplateId}`,
+        });
+      }
+
+      // "Wrong Template" feedback creates a Failed Match record for the
+      // dedicated review queue, in addition to the general learning log.
+      if (feedbackType === 'Wrong Template' || feedbackType === 'Wrong Template Override') {
+        await prisma.failedMatch.create({
+          data: {
+            emailId: email.id,
+            userId: user?.id || null,
+            userEmail: user?.email || null,
+            aiSelectedTemplateId: email.matchedTemplateId,
+            correctedTemplateId: approvedTemplateId || null,
+            confidenceScore: email.aiConfidence,
+            matchedKeywords: null,
+            aiReason: email.summary,
+            status: 'Open',
+            notes: feedbackNotes || null,
+          },
         });
       }
 
@@ -308,11 +417,13 @@ export async function POST(
         }
       });
 
-      await prisma.auditLog.create({
-        data: {
-          action: 'USER_FEEDBACK_SUBMITTED',
-          details: `User submitted feedback "${feedbackType}" for email ${email.id}. Recorded to AI Learning Log.`
-        }
+      await logAudit({
+        action: 'FEEDBACK_' + feedbackType.toUpperCase().replace(/\s+/g, '_'),
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} clicked "${feedbackType}" on email from ${email.sender}`,
       });
 
       return NextResponse.json({ success: true, email: updatedEmail });
@@ -324,11 +435,15 @@ export async function POST(
         data: { status: 'ESCALATED' }
       });
 
-      await prisma.auditLog.create({
-        data: {
-          action: 'EMAIL_ARCHIVED',
-          details: `Email with subject "${email.subject}" archived by operator.`
-        }
+      await logAudit({
+        action: 'EMAIL_ARCHIVED',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        beforeValue: email.status,
+        afterValue: 'ESCALATED',
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} archived the email with subject "${email.subject}"`,
       });
 
       return NextResponse.json({ success: true, email: updated });
@@ -346,6 +461,8 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
+    const user = await getCurrentUser();
+    const ip = getClientIp(request);
 
     const email = await prisma.email.findUnique({
       where: { id }
@@ -359,11 +476,14 @@ export async function DELETE(
       where: { id }
     });
 
-    await prisma.auditLog.create({
-      data: {
-        action: 'EMAIL_DELETED',
-        details: `Email with subject "${email.subject}" from "${email.sender}" deleted.`
-      }
+    await logAudit({
+      action: 'EMAIL_DELETED',
+      user,
+      entityType: 'email',
+      entityId: id,
+      beforeValue: `${email.subject} (from ${email.sender})`,
+      ipAddress: ip,
+      details: `${user?.email || 'Unknown user'} deleted the email with subject "${email.subject}" from "${email.sender}"`,
     });
 
     return NextResponse.json({ success: true, message: 'Email deleted successfully' });

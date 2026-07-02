@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { parseKeywords, matchTemplates, TemplateForScoring, MatchResult } from './keyword-engine';
+import { getThreadContext } from './customer-service';
 
 export interface AIPipelineResult {
   language: string;
@@ -371,6 +372,14 @@ export async function runAIPipeline(
     return `- ID: "${t.id}", Title: "${t.name}", Keywords: "${t.variables || ''}"`;
   }).join('\n');
 
+  const threadContext = await getThreadContext(organizationId, sender, undefined, 5);
+  const threadContextStr = threadContext.length > 0
+    ? threadContext.map(e => {
+        const tmplName = e.matchedTemplateId ? templates.find(t => t.id === e.matchedTemplateId)?.name : null;
+        return `- [${e.createdAt.toISOString().slice(0, 10)}] Subject: "${e.subject}" ${tmplName ? `(previously matched: "${tmplName}")` : ''}`;
+      }).join('\n')
+    : 'None — this is the first email from this sender.';
+
   const analysisPrompt = `
 You are an advanced email intent classification and template-matching agent for StyleCraft US customer support.
 Analyze the following incoming email:
@@ -380,6 +389,11 @@ Subject: ${subject}
 Body:
 ${body}
 ---
+
+PREVIOUS emails from this same sender (most recent first) — use this context if the
+new email is a follow-up, references an earlier issue, or contradicts what was said
+before. Do not treat an obvious follow-up as a brand new, unrelated request:
+${threadContextStr}
 
 Approved response templates in the database:
 ${templatesListStr}
@@ -394,6 +408,7 @@ Your task is to analyze the email and return a JSON object with the following fi
 7. "matchedTemplateId": The ID of the best matching template from the approved templates database list above. Return null if no template matches or is unclear.
 8. "confidenceScore": A decimal number between 0.0 and 1.0 representing your confidence in this template match.
 9. "spam": Boolean (true/false) indicating if this is marketing spam, advertising, or phishing.
+10. "contextReason": If the previous-email context above changed which template you selected compared to what the new email's text alone would suggest, briefly explain why (1 sentence). Otherwise null.
 
 Return ONLY a valid JSON object. Do not include markdown code block formatting.
 `;
@@ -542,7 +557,7 @@ Return ONLY a valid JSON object. Do not include markdown code block formatting.
       spam: !!result.spam,
       duplicate,
       draftReply,
-      summary: result.summary || `Customer inquiry regarding: ${subject}`,
+      summary: result.contextReason ? `${result.summary || subject} (${result.contextReason})` : (result.summary || `Customer inquiry regarding: ${subject}`),
       matchedTemplateId,
       aiProvider: provider,
     };

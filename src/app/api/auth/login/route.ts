@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
@@ -15,8 +16,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
-    // In a production app, we would verify the password using bcrypt. 
-    // For demo/seeding ease, we accept 'password123' or verify user existence.
+    const passwordValid = await bcrypt.compare(password || '', user.passwordHash);
+    if (!passwordValid) {
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+    }
+
+    await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
+
     const response = NextResponse.json({
       success: true,
       user: {

@@ -4,9 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { CommandMenu } from '@/components/command-menu';
-import { 
-  LayoutGrid, Mail, Sliders, FileText, Settings as SettingsIcon, 
-  Terminal, LogOut, RefreshCw, Wand2, Activity
+import {
+  LayoutGrid, Mail, Sliders, FileText, Settings as SettingsIcon,
+  Terminal, LogOut, RefreshCw, Wand2, Activity, StickyNote, XCircle
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -55,10 +55,12 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutGrid },
     { name: 'Inbox Queue', path: '/inbox', icon: Mail },
+    { name: 'Failed Matches', path: '/failed-matches', icon: XCircle },
     { name: 'Automation Rules', path: '/rules', icon: Sliders },
     { name: 'Reply Templates', path: '/templates', icon: Terminal },
     { name: 'Automation Logs', path: '/logs', icon: Activity },
     { name: 'Knowledge Base', path: '/knowledge', icon: FileText },
+    { name: 'Internal Notes', path: '/notes', icon: StickyNote },
     { name: 'AI Prompt Settings', path: '/settings', icon: SettingsIcon },
   ];
 

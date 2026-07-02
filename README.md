@@ -56,7 +56,7 @@ npm run dev
 ```
 Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
-* **Demo login credentials**: `jashwanthd@stylecraftus.com` / `password123` (or click "Sign In" to auto-login).
+* **Demo login credentials**: `jashwanthd@stylecraftus.com` / `StyleCraft@123` (Admin), or `support1@stylecraftus.com` / `support2@stylecraftus.com` / `support3@stylecraftus.com` (Support Agent), all with the same temporary password.
 
 ---
 

@@ -238,6 +238,47 @@ export async function GET(request: Request) {
       take: 5,
     });
 
+    // 6. Failed matches (Wrong Template feedback)
+    const failedMatchesCount = await prisma.failedMatch.count({
+      where: { email: { organizationId: orgId } },
+    });
+    const openFailedMatchesCount = await prisma.failedMatch.count({
+      where: { email: { organizationId: orgId }, status: 'Open' },
+    });
+    const wrongTemplateFeedbackCount = await prisma.email.count({
+      where: { organizationId: orgId, userFeedback: { in: ['Wrong Template', 'Wrong Template Override'] } },
+    });
+    const recentFailedMatches = await prisma.failedMatch.findMany({
+      where: { email: { organizationId: orgId } },
+      include: { email: { select: { subject: true, sender: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+
+    // 7. Template counts
+    const activeTemplatesCount = await prisma.template.count({ where: { organizationId: orgId, active: true } });
+    const disabledTemplatesCount = await prisma.template.count({ where: { organizationId: orgId, active: false } });
+
+    // 8. Internal notes
+    const internalNotesCount = await prisma.internalNote.count({ where: { organizationId: orgId } });
+
+    // 9. Top senders by email count
+    const topSendersGroup = await prisma.email.groupBy({
+      by: ['sender'],
+      where: { organizationId: orgId },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 5,
+    });
+    const topSenders = topSendersGroup.map(s => ({ sender: s.sender, count: s._count.id }));
+
+    // 10. Recent changes & activity feed (from the audit log)
+    const recentChanges = await prisma.auditLog.findMany({
+      where: {},
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+    });
+
     return NextResponse.json({
       metrics: {
         totalEmails,
@@ -255,6 +296,13 @@ export async function GET(request: Request) {
         avgConfidence: `${avgConfidence}%`,
         automationRate: `${automationRate}%`,
         topMatchedKeywords,
+        failedMatchesCount,
+        openFailedMatchesCount,
+        wrongTemplateFeedbackCount,
+        activeTemplatesCount,
+        disabledTemplatesCount,
+        internalNotesCount,
+        topSenders,
       },
       charts: {
         emailsPerDay,
@@ -268,6 +316,25 @@ export async function GET(request: Request) {
         status: e.status,
         category: e.category,
         time: e.createdAt,
+      })),
+      recentFailedMatches: recentFailedMatches.map(f => ({
+        id: f.id,
+        subject: f.email.subject,
+        sender: f.email.sender,
+        status: f.status,
+        confidenceScore: f.confidenceScore,
+        createdAt: f.createdAt,
+      })),
+      recentChanges: recentChanges.map(c => ({
+        id: c.id,
+        action: c.action,
+        userEmail: c.userEmail,
+        entityType: c.entityType,
+        entityId: c.entityId,
+        beforeValue: c.beforeValue,
+        afterValue: c.afterValue,
+        details: c.details,
+        createdAt: c.createdAt,
       })),
     });
   } catch (error: any) {

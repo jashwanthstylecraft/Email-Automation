@@ -15,6 +15,7 @@ model User {
   role           String       @default("Viewer") // Owner, Admin, Support Agent, Viewer
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lastLogin      DateTime?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
@@ -29,9 +30,27 @@ model Organization {
   documents    Document[]
   templates    Template[]
   integrations Integration[]
+  customers    Customer[]
+  internalNotes InternalNote[]
   settings     Settings?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+}
+
+model Customer {
+  id             String       @id @default(uuid())
+  email          String
+  name           String?
+  totalEmails    Int          @default(0)
+  totalReplies   Int          @default(0)
+  lastEmailAt    DateTime?
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  emails         Email[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, email])
 }
 
 model Settings {
@@ -64,6 +83,9 @@ model Inbox {
 model Email {
   id              String       @id @default(uuid())
   externalId      String?      // Provider email ID
+  gmailThreadId   String?      // Gmail thread ID, for grouping a conversation
+  customerId      String?
+  customer        Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   sender          String
   recipient       String
   subject         String
@@ -87,6 +109,8 @@ model Email {
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   autoReplies     AutoReply[]
+  failedMatches   FailedMatch[]
+  internalNotes   InternalNote[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 }
@@ -159,8 +183,49 @@ model AuditLog {
   id             String    @id @default(uuid())
   action         String
   userId         String?
+  userEmail      String?   // denormalized for easy display without a join
+  entityType     String?   // email, template, keyword, note, rule
+  entityId       String?
+  beforeValue    String?
+  afterValue     String?
+  ipAddress      String?
   details        String
   createdAt      DateTime  @default(now())
+}
+
+model FailedMatch {
+  id                    String    @id @default(uuid())
+  emailId               String
+  email                 Email     @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  userId                String?
+  userEmail             String?
+  aiSelectedTemplateId  String?
+  correctedTemplateId   String?
+  confidenceScore       Float     @default(0)
+  matchedKeywords       String?
+  aiReason              String?
+  status                String    @default("Open") // Open, Reviewed, Resolved
+  notes                 String?
+  createdAt             DateTime  @default(now())
+  reviewedAt            DateTime?
+}
+
+model InternalNote {
+  id                  String       @id @default(uuid())
+  title               String
+  body                String
+  relatedTemplateId   String?
+  relatedEmailId      String?
+  relatedEmail        Email?       @relation(fields: [relatedEmailId], references: [id], onDelete: SetNull)
+  createdByUserId     String?
+  createdByName       String?
+  updatedByUserId     String?
+  updatedByName       String?
+  isPinned            Boolean      @default(false)
+  organizationId      String
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 }
 
 model LearningLog {

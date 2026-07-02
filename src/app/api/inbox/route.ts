@@ -42,7 +42,7 @@ export async function GET(request: Request) {
     const emails = await prisma.email.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: { autoReplies: true },
+      include: { autoReplies: true, customer: true },
     });
 
     return NextResponse.json({ emails });

@@ -20,8 +20,9 @@ const KEYWORD_CATEGORIES: { key: keyof StructuredKeywords; label: string; hint: 
 
 export default function TemplatesPage() {
   const {
-    templates, fetchTemplates, saveTemplate, deleteTemplate, isLoading
+    templates, fetchTemplates, saveTemplate, deleteTemplate, isLoading, user
   } = useStore();
+  const isAdmin = user?.role === 'Admin';
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -421,12 +422,15 @@ export default function TemplatesPage() {
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
-                          <button
-                            onClick={() => handleDelete(tmpl.id)}
-                            className="p-1 hover:bg-white/5 rounded text-red-500/70 hover:text-red-400 transition-colors cursor-pointer"
-                          >
-                            <Trash className="w-3.5 h-3.5" />
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDelete(tmpl.id)}
+                              className="p-1 hover:bg-white/5 rounded text-red-500/70 hover:text-red-400 transition-colors cursor-pointer"
+                              title="Delete Template (Admin only)"
+                            >
+                              <Trash className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </div>
 

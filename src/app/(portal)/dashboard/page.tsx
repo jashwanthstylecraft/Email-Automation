@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 import { useStore } from '@/lib/store';
 import {
   Mail, Send, Clock, AlertTriangle, Sliders, Sparkles, ArrowRight, Activity, Edit3, MessageSquare, ShieldCheck,
-  WifiOff, RefreshCw
+  WifiOff, RefreshCw, XCircle, ToggleRight, ToggleLeft, StickyNote, Users, History, ThumbsDown
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -15,7 +15,7 @@ const POLL_INTERVAL_MS = 15000;
 
 export default function DashboardPage() {
   const {
-    dashboardMetrics, dashboardCharts, recentActivity,
+    dashboardMetrics, dashboardCharts, recentActivity, recentFailedMatches, recentChanges,
     fetchDashboard, user, isDashboardLoading, isDashboardRefreshing, dashboardError, dashboardUpdatedAt
   } = useStore();
 
@@ -88,7 +88,7 @@ export default function DashboardPage() {
       bg: 'bg-amber-500/10 border-amber-500/20',
     },
     {
-      title: 'Failed Matches',
+      title: 'Rejected Drafts',
       value: dashboardMetrics.failedAttempts,
       icon: AlertTriangle,
       color: 'text-red-400',
@@ -100,6 +100,43 @@ export default function DashboardPage() {
       icon: Sliders,
       color: 'text-violet-400',
       bg: 'bg-violet-500/10 border-violet-500/20',
+    },
+    {
+      title: 'Failed Matches',
+      value: dashboardMetrics.failedMatchesCount || 0,
+      icon: XCircle,
+      color: 'text-red-400',
+      bg: 'bg-red-500/10 border-red-500/20',
+      href: '/failed-matches',
+    },
+    {
+      title: 'Wrong Template Feedback',
+      value: dashboardMetrics.wrongTemplateFeedbackCount || 0,
+      icon: ThumbsDown,
+      color: 'text-amber-400',
+      bg: 'bg-amber-500/10 border-amber-500/20',
+    },
+    {
+      title: 'Active Templates',
+      value: dashboardMetrics.activeTemplatesCount || 0,
+      icon: ToggleRight,
+      color: 'text-emerald-400',
+      bg: 'bg-emerald-500/10 border-emerald-500/20',
+    },
+    {
+      title: 'Disabled Templates',
+      value: dashboardMetrics.disabledTemplatesCount || 0,
+      icon: ToggleLeft,
+      color: 'text-gray-400',
+      bg: 'bg-gray-500/10 border-gray-500/20',
+    },
+    {
+      title: 'Internal Notes',
+      value: dashboardMetrics.internalNotesCount || 0,
+      icon: StickyNote,
+      color: 'text-cyan-400',
+      bg: 'bg-cyan-500/10 border-cyan-500/20',
+      href: '/notes',
     },
   ];
 
@@ -155,11 +192,12 @@ export default function DashboardPage() {
       )}
 
       {/* Primary KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
+          const CardTag: any = kpi.href ? Link : 'div';
           return (
-            <div key={kpi.title} className="glass-panel p-4 rounded-xl border border-white/5 relative overflow-hidden flex flex-col justify-between bg-[#0b0b0f]/60">
+            <CardTag key={kpi.title} {...(kpi.href ? { href: kpi.href } : {})} className={`glass-panel p-4 rounded-xl border border-white/5 relative overflow-hidden flex flex-col justify-between bg-[#0b0b0f]/60 ${kpi.href ? 'hover:border-violet-500/30 transition-colors cursor-pointer' : ''}`}>
               <div className="flex justify-between items-start">
                 <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider leading-relaxed">{kpi.title}</p>
                 <div className={`p-1.5 rounded-lg border ${kpi.bg}`}>
@@ -169,7 +207,7 @@ export default function DashboardPage() {
               <div className="mt-3">
                 <h3 className="text-xl font-bold tracking-tight text-white">{kpi.value}</h3>
               </div>
-            </div>
+            </CardTag>
           );
         })}
       </div>
@@ -320,6 +358,81 @@ export default function DashboardPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+
+          {/* Failed Matches, Top Senders, Recent Changes & Activity */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+                  <XCircle className="w-4 h-4 text-red-400" />
+                  Recent Failed Matches
+                </h3>
+                <Link href="/failed-matches" className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
+                  View All →
+                </Link>
+              </div>
+              {(!recentFailedMatches || recentFailedMatches.length === 0) ? (
+                <p className="text-gray-500 text-[10px] py-4 text-center">No wrong-template feedback logged yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentFailedMatches.map((f: any) => (
+                    <Link key={f.id} href="/failed-matches" className="block bg-white/5 hover:bg-white/10 p-2.5 rounded border border-white/5 transition-colors">
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-white font-semibold truncate max-w-[70%]">{f.subject}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold flex-shrink-0 ${
+                          f.status === 'Open' ? 'bg-red-600/10 border border-red-500/20 text-red-400' :
+                          f.status === 'Reviewed' ? 'bg-amber-600/10 border border-amber-500/20 text-amber-400' :
+                          'bg-emerald-600/10 border border-emerald-500/20 text-emerald-400'
+                        }`}>{f.status}</span>
+                      </div>
+                      <p className="text-[9px] text-gray-500 mt-1 truncate">{f.sender}</p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60">
+              <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 mb-4">
+                <Users className="w-4 h-4 text-violet-400" />
+                Top Senders
+              </h3>
+              {(!dashboardMetrics.topSenders || dashboardMetrics.topSenders.length === 0) ? (
+                <p className="text-gray-500 text-[10px] py-4 text-center">No senders yet.</p>
+              ) : (
+                <div className="space-y-2 font-mono text-[10px]">
+                  {dashboardMetrics.topSenders.map((s: any) => (
+                    <div key={s.sender} className="flex justify-between items-center bg-white/5 p-2.5 rounded border border-white/5">
+                      <span className="text-violet-300 font-semibold truncate max-w-[70%]">{s.sender}</span>
+                      <span className="px-2 py-0.5 rounded bg-violet-600/10 border border-violet-500/20 text-violet-400 font-bold">{s.count} emails</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60">
+              <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 mb-4">
+                <History className="w-4 h-4 text-violet-400" />
+                Recent Changes & Activity
+              </h3>
+              {(!recentChanges || recentChanges.length === 0) ? (
+                <p className="text-gray-500 text-[10px] py-4 text-center">No activity recorded yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {recentChanges.map((c: any) => (
+                    <div key={c.id} className="bg-white/5 p-2.5 rounded border border-white/5 text-[10px]">
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="text-gray-300 font-semibold truncate max-w-[75%]">{c.userEmail || 'System'}</span>
+                        <span className="text-gray-500 text-[9px] flex-shrink-0">{new Date(c.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                      <p className="text-gray-500 mt-1 leading-relaxed truncate">{c.details}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </>

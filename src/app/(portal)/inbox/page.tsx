@@ -48,6 +48,19 @@ export default function InboxPage() {
     setTimeout(() => setSendToast(null), 3000);
   };
 
+  // Customer thread context (previous emails from the same sender)
+  const [threadContext, setThreadContext] = useState<any[]>([]);
+  useEffect(() => {
+    if (!selectedEmail) {
+      setThreadContext([]);
+      return;
+    }
+    fetch(`/api/inbox/${selectedEmail.id}`)
+      .then(res => res.json())
+      .then(data => setThreadContext(data.threadContext || []))
+      .catch(() => setThreadContext([]));
+  }, [selectedEmail?.id]);
+
   useEffect(() => {
     fetchEmails({ status: activeFilter, search, category: activeCategory });
     fetchTemplates();
@@ -452,7 +465,12 @@ export default function InboxPage() {
                 }`}
               >
                 <div className="flex justify-between items-start gap-2">
-                  <span className="font-bold text-white truncate max-w-[50%]">{email.sender}</span>
+                  <div className="truncate max-w-[50%]">
+                    <span className="font-bold text-white block truncate" title={email.sender}>
+                      {email.sender.split('@')[0].split('.')[0].replace(/^\w/, c => c.toUpperCase())}
+                    </span>
+                    <span className="text-[9px] text-gray-500 block truncate">{email.sender}</span>
+                  </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
                     <button
                       onClick={(e) => {
@@ -493,6 +511,11 @@ export default function InboxPage() {
                   <span className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] text-gray-400">
                     {email.category}
                   </span>
+                  {email.customer && email.customer.totalEmails > 1 && (
+                    <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[9px] text-cyan-300 font-mono" title="Total emails received from this sender">
+                      {email.customer.totalEmails} emails from sender
+                    </span>
+                  )}
                   {email.aiConfidence > 0 && (
                     <span className="px-2 py-0.5 rounded bg-violet-500/10 border border-violet-500/20 text-[9px] text-violet-300 font-mono">
                       {Math.round(email.aiConfidence * 100)}% Match
@@ -515,7 +538,48 @@ export default function InboxPage() {
         ) : (
           <>
             <div className="p-6 space-y-6 flex-1">
-              
+
+              {/* Customer Profile Panel */}
+              {(selectedEmail.customer || threadContext.length > 0) && (
+                <div className="glass-panel p-4 rounded-xl border border-white/5 bg-[#121217]/50 space-y-3">
+                  <div className="flex items-center gap-2 text-cyan-400 font-bold border-b border-white/5 pb-2">
+                    <UserCheck className="w-4 h-4" />
+                    Customer Profile — {selectedEmail.sender}
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 font-mono text-[10px]">
+                    <div>
+                      <span className="text-gray-500 uppercase font-semibold">Total Emails:</span>
+                      <p className="text-white font-bold mt-1">{selectedEmail.customer?.totalEmails ?? threadContext.length + 1}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 uppercase font-semibold">Total Replies Sent:</span>
+                      <p className="text-white font-bold mt-1">{selectedEmail.customer?.totalReplies ?? 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 uppercase font-semibold">Last Contacted:</span>
+                      <p className="text-white font-bold mt-1">{selectedEmail.customer?.lastEmailAt ? new Date(selectedEmail.customer.lastEmailAt).toLocaleDateString() : 'First contact'}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 uppercase font-semibold">Thread Count:</span>
+                      <p className="text-white font-bold mt-1">{threadContext.length}</p>
+                    </div>
+                  </div>
+                  {threadContext.length > 0 && (
+                    <div className="pt-2 border-t border-white/5">
+                      <span className="text-gray-500 uppercase font-semibold text-[9px]">Previous Emails from this Sender:</span>
+                      <div className="space-y-1.5 mt-2 max-h-32 overflow-y-auto">
+                        {threadContext.map((t: any) => (
+                          <div key={t.id} className="flex justify-between items-center bg-white/5 p-2 rounded text-[10px]">
+                            <span className="text-gray-300 truncate max-w-[70%]">{t.subject}</span>
+                            <span className="text-gray-500 text-[9px] flex-shrink-0">{new Date(t.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Detailed AI Response Draft Specs */}
               <div className="glass-panel p-4 rounded-xl border border-white/5 bg-[#121217]/50 space-y-3">
                 <div className="flex items-center gap-2 text-violet-400 font-bold border-b border-white/5 pb-2">

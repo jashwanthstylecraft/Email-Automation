@@ -32,6 +32,7 @@ export interface Email {
   assignedUserId?: string;
   createdAt: string;
   autoReplies?: any[];
+  customer?: { id: string; email: string; totalEmails: number; totalReplies: number; lastEmailAt: string | null } | null;
 }
 
 export interface Settings {
@@ -94,6 +95,8 @@ interface AppState {
   dashboardMetrics: any;
   dashboardCharts: any;
   recentActivity: any[];
+  recentFailedMatches: any[];
+  recentChanges: any[];
   dashboardUpdatedAt: number | null;
   isDashboardLoading: boolean;
   isDashboardRefreshing: boolean;
@@ -131,6 +134,13 @@ interface AppState {
   auditLogs: any[];
   fetchAuditLogs: () => Promise<void>;
   analyzeReferenceFile: (documentId?: string) => Promise<{ success: boolean; templatesCount: number; rulesCount: number } | null>;
+  notes: any[];
+  fetchNotes: (filters?: { search?: string; templateId?: string; userId?: string }) => Promise<void>;
+  saveNote: (note: { id?: string; title: string; noteBody: string; relatedTemplateId?: string | null; relatedEmailId?: string | null; isPinned?: boolean }) => Promise<void>;
+  deleteNote: (id: string) => Promise<void>;
+  failedMatches: any[];
+  fetchFailedMatches: (filters?: { status?: string; templateId?: string; sender?: string }) => Promise<void>;
+  updateFailedMatch: (id: string, data: { status?: string; notes?: string }) => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -145,6 +155,8 @@ export const useStore = create<AppState>((set, get) => ({
   dashboardMetrics: null,
   dashboardCharts: null,
   recentActivity: [],
+  recentFailedMatches: [],
+  recentChanges: [],
   dashboardUpdatedAt: null,
   isDashboardLoading: false,
   isDashboardRefreshing: false,
@@ -152,6 +164,8 @@ export const useStore = create<AppState>((set, get) => ({
   isLoading: false,
   error: null,
   auditLogs: [],
+  notes: [],
+  failedMatches: [],
 
   fetchSession: async () => {
     try {
@@ -192,6 +206,8 @@ export const useStore = create<AppState>((set, get) => ({
         dashboardMetrics: data.metrics,
         dashboardCharts: data.charts,
         recentActivity: data.recentActivity,
+        recentFailedMatches: data.recentFailedMatches || [],
+        recentChanges: data.recentChanges || [],
         dashboardUpdatedAt: Date.now(),
         isDashboardLoading: false,
         isDashboardRefreshing: false,
@@ -537,8 +553,11 @@ export const useStore = create<AppState>((set, get) => ({
       const res = await fetch(`/api/templates?id=${id}`, {
         method: 'DELETE',
       });
+      const data = await res.json();
       if (res.ok) {
         await get().fetchTemplates();
+      } else {
+        set({ error: data.error || 'Failed to delete template' });
       }
     } catch (err: any) {
       set({ error: err.message });
@@ -580,6 +599,83 @@ export const useStore = create<AppState>((set, get) => ({
       const res = await fetch('/api/logs');
       const data = await res.json();
       set({ auditLogs: data.logs || [] });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  fetchNotes: async (filters = {}) => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const params = new URLSearchParams({ orgId: user.organizationId });
+      if (filters.search) params.set('search', filters.search);
+      if (filters.templateId) params.set('templateId', filters.templateId);
+      if (filters.userId) params.set('userId', filters.userId);
+      const res = await fetch(`/api/notes?${params}`);
+      const data = await res.json();
+      set({ notes: data.notes || [] });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  saveNote: async (note) => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const method = note.id ? 'PUT' : 'POST';
+      const url = note.id ? `/api/notes/${note.id}` : '/api/notes';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...note, organizationId: user.organizationId }),
+      });
+      if (res.ok) {
+        await get().fetchNotes();
+      }
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  deleteNote: async (id) => {
+    try {
+      const res = await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await get().fetchNotes();
+      }
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  fetchFailedMatches: async (filters = {}) => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const params = new URLSearchParams({ orgId: user.organizationId });
+      if (filters.status) params.set('status', filters.status);
+      if (filters.templateId) params.set('templateId', filters.templateId);
+      if (filters.sender) params.set('sender', filters.sender);
+      const res = await fetch(`/api/failed-matches?${params}`);
+      const data = await res.json();
+      set({ failedMatches: data.failedMatches || [] });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  updateFailedMatch: async (id, data) => {
+    try {
+      const res = await fetch(`/api/failed-matches/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        await get().fetchFailedMatches();
+      }
     } catch (err: any) {
       set({ error: err.message });
     }
