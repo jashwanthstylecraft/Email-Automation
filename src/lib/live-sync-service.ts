@@ -87,7 +87,27 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         }
 
         if (isPromoOrSocial) {
-          console.log(`Skipping promotional, social, or list email from ${senderEmail}: ${subject}`);
+          // Import it (so it's visible under the "Updates" mailbox tab
+          // instead of vanishing) but skip the AI pipeline entirely --
+          // these aren't real customer inquiries, so running template
+          // matching against them would just be wasted API calls and noise.
+          console.log(`Filed as Updates (promotional/social/list email) from ${senderEmail}: ${subject}`);
+          const updatesEmail = await prisma.email.create({
+            data: {
+              sender: senderEmail,
+              recipient: inbox.emailAddress,
+              subject: subject,
+              body: body,
+              preview: previewText,
+              status: 'UNREAD',
+              gmailCategory: 'updates',
+              category: 'Promotions / Updates',
+              organizationId: inbox.organizationId,
+            },
+          });
+          await upsertCustomerForEmail(inbox.organizationId, senderEmail, updatesEmail.id);
+          emailsSynced.push(updatesEmail);
+          syncedCount++;
           await client.messageFlagsAdd({ seq }, ['\\Seen']);
           continue;
         }
@@ -121,6 +141,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
               body: body,
               preview: previewText,
               status: 'UNREAD',
+              gmailCategory: 'primary',
               organizationId: inbox.organizationId,
             },
           });

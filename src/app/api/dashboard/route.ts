@@ -261,6 +261,7 @@ export async function GET(request: Request) {
 
     // 8. Internal notes
     const internalNotesCount = await prisma.internalNote.count({ where: { organizationId: orgId } });
+    const customersCount = await prisma.customer.count({ where: { organizationId: orgId } });
 
     // 9. Top senders by email count
     const topSendersGroup = await prisma.email.groupBy({
@@ -332,6 +333,7 @@ export async function GET(request: Request) {
         activeTemplatesCount,
         disabledTemplatesCount,
         internalNotesCount,
+        customersCount,
         topSenders,
         editedDraftsCount,
         editedTodayCount,

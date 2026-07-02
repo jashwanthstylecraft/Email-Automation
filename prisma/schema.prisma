@@ -84,6 +84,7 @@ model Email {
   id              String       @id @default(uuid())
   externalId      String?      // Provider email ID
   gmailThreadId   String?      // Gmail thread ID, for grouping a conversation
+  gmailCategory   String       @default("primary") // primary, updates (Gmail Promotions/Social/Forums/bulk mail bucketed together)
   customerId      String?
   customer        Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   sender          String

@@ -75,7 +75,7 @@ export default function DashboardPage() {
       icon: Edit3,
       color: 'text-violet-300',
       bg: 'bg-violet-500/10 border-violet-500/20',
-      href: '/inbox?status=UNREAD',
+      href: '/inbox?status=DRAFTS',
     },
     {
       title: 'Edited Drafts',
@@ -156,6 +156,14 @@ export default function DashboardPage() {
       color: 'text-cyan-400',
       bg: 'bg-cyan-500/10 border-cyan-500/20',
       href: '/notes',
+    },
+    {
+      title: 'Customers',
+      value: dashboardMetrics.customersCount || 0,
+      icon: Users,
+      color: 'text-cyan-400',
+      bg: 'bg-cyan-500/10 border-cyan-500/20',
+      href: '/customers',
     },
   ];
 

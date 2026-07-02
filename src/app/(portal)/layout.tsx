@@ -6,8 +6,7 @@ import { useStore } from '@/lib/store';
 import { CommandMenu } from '@/components/command-menu';
 import {
   LayoutGrid, Mail, Sliders, FileText, Settings as SettingsIcon,
-  Terminal, LogOut, RefreshCw, Wand2, Activity, StickyNote, XCircle,
-  ShieldQuestion, Edit3, Users, History
+  Terminal, LogOut, RefreshCw, Wand2, Activity, StickyNote, History
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -56,14 +55,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutGrid },
     { name: 'Inbox Queue', path: '/inbox', icon: Mail },
-    { name: 'Manual Review', path: '/inbox?status=WAITING', icon: ShieldQuestion },
-    { name: 'Failed Matches', path: '/failed-matches', icon: XCircle },
-    { name: 'Edited Drafts', path: '/edited-drafts', icon: Edit3 },
     { name: 'Automation Rules', path: '/rules', icon: Sliders },
     { name: 'Reply Templates', path: '/templates', icon: Terminal },
     { name: 'Knowledge Base', path: '/knowledge', icon: FileText },
     { name: 'Internal Notes', path: '/notes', icon: StickyNote },
-    { name: 'Customers', path: '/customers', icon: Users },
     { name: 'Automation Logs', path: '/logs', icon: Activity },
     { name: 'Audit Logs', path: '/audit-logs', icon: History },
     { name: 'AI Prompt Settings', path: '/settings', icon: SettingsIcon },

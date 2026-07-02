@@ -18,7 +18,16 @@ export async function GET(request: Request) {
 
     const where: any = { organizationId: orgId };
 
-    if (status && status !== 'ALL') {
+    // The "status" param doubles as the mailbox tab selector. Most values
+    // map straight to the Email.status column, but a few are pseudo-views
+    // that need a different filter entirely.
+    if (status === 'PRIMARY') {
+      where.gmailCategory = 'primary';
+    } else if (status === 'UPDATES') {
+      where.gmailCategory = 'updates';
+    } else if (status === 'DRAFTS') {
+      where.autoReplies = { some: { status: 'DRAFT' } };
+    } else if (status && status !== 'ALL') {
       where.status = status;
     }
     if (priority && priority !== 'ALL') {

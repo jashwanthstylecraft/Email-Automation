@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
-  Search, Mail, AlertTriangle, ShieldCheck, Flame, Ban,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper
+  Search, Mail, AlertTriangle, ShieldCheck, Flame,
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, Megaphone, FileEdit, Archive
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
 
@@ -294,12 +294,13 @@ export default function InboxPage() {
   };
 
   const filterTabs = [
-    { label: 'Inbox', value: 'ALL', icon: InboxIcon },
-    { label: 'Unread', value: 'UNREAD', icon: CircleDot },
-    { label: 'Manual Review', value: 'WAITING', icon: ShieldQuestion },
+    { label: 'All', value: 'ALL', icon: InboxIcon },
+    { label: 'Primary', value: 'PRIMARY', icon: CircleDot },
+    { label: 'Updates', value: 'UPDATES', icon: Megaphone },
+    { label: 'Drafts', value: 'DRAFTS', icon: FileEdit },
     { label: 'Sent', value: 'REPLIED', icon: CheckCheck },
-    { label: 'Escalated', value: 'ESCALATED', icon: AlertTriangle },
-    { label: 'Spam', value: 'SPAM', icon: Ban },
+    { label: 'Manual Review', value: 'WAITING', icon: ShieldQuestion },
+    { label: 'Deleted / Archived', value: 'ESCALATED', icon: Archive },
   ];
 
   const getPriorityBadge = (p: string) => {
