@@ -77,7 +77,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#08080a] bg-grid-pattern text-white">
       {/* Sidebar Navigation */}
-      <aside className="w-52 border-r border-white/5 bg-[#0b0b0f]/80 backdrop-blur-md flex flex-col flex-shrink-0">
+      <aside className="w-40 border-r border-white/5 bg-[#0b0b0f]/80 backdrop-blur-md flex flex-col flex-shrink-0">
         <div className="h-16 flex items-center px-4 border-b border-white/5 gap-2.5 group cursor-pointer flex-shrink-0">
           <div className="p-1.5 bg-violet-500/10 border border-violet-500/20 rounded-lg transition-all duration-300 group-hover:scale-110 group-hover:border-violet-500/40 group-hover:shadow-[0_0_15px_rgba(139,92,246,0.3)]">
             <Mail className="w-4 h-4 text-violet-400 transition-transform duration-500 group-hover:rotate-12" />
