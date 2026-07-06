@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
-import { StickyNote, Plus, Pin, Trash2, Edit3, Search, Save } from 'lucide-react';
+import { StickyNote, Plus, Pin, Trash2, Edit3, Search, Save, Mail } from 'lucide-react';
+import Link from 'next/link';
 
 export default function NotesPage() {
   const { notes, fetchNotes, saveNote, deleteNote, templates, fetchTemplates, user } = useStore();
@@ -156,6 +157,14 @@ export default function NotesPage() {
                   <p className="text-[9px] text-violet-300 uppercase tracking-wider font-mono mt-1.5">
                     Related: {templateName(note.relatedTemplateId)}
                   </p>
+                )}
+                {note.relatedEmail && (
+                  <Link
+                    href={`/inbox?emailId=${note.relatedEmail.id}`}
+                    className="inline-flex items-center gap-1 text-[9px] text-cyan-300 hover:text-cyan-200 uppercase tracking-wider font-mono mt-1.5"
+                  >
+                    <Mail className="w-2.5 h-2.5" /> {note.relatedEmail.subject}
+                  </Link>
                 )}
                 <p className="text-[11px] text-gray-300 mt-3 leading-relaxed whitespace-pre-wrap line-clamp-4">{note.body}</p>
               </div>

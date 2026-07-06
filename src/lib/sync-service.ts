@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { runAIPipeline } from './ai-pipeline';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
+import { assignEmailRoundRobin } from './assignment-service';
 
 const MOCK_INCOMING_TEMPLATES = [
   {
@@ -88,9 +89,22 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
   console.log(`Processing new email ${newEmail.id} with AI...`);
   const aiResult = await runAIPipeline(newEmail.body, newEmail.subject, newEmail.sender, inbox.organizationId);
 
+  // Spam is never surfaced in the inbox -- discard it outright rather than
+  // storing it with a SPAM status the UI has to filter around.
+  if (aiResult.spam) {
+    await prisma.email.delete({ where: { id: newEmail.id } });
+    await prisma.auditLog.create({
+      data: {
+        action: 'SPAM_DISCARDED',
+        details: JSON.stringify({ subject: template.subject, sender: senderEmail }),
+      },
+    });
+    return { email: null, skipped: true, reason: 'spam' };
+  }
+
   // Get templates list to resolve matched template name
   const templates = await prisma.template.findMany({ where: { organizationId: inbox.organizationId } });
-  const matchedTmplName = aiResult.matchedTemplateId 
+  const matchedTmplName = aiResult.matchedTemplateId
     ? (templates.find(t => t.id === aiResult.matchedTemplateId)?.name || 'None')
     : 'None';
 
@@ -103,11 +117,9 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
   const isRecentDuplicate = await checkRecentDuplicateReply(inbox.organizationId, senderEmail, aiResult.matchedTemplateId ?? null);
 
   // 3. Update the Email record with AI classifications
-  const finalStatus = aiResult.spam
-    ? 'SPAM'
-    : isRecentDuplicate
-      ? 'WAITING'
-      : (aiResult.aiConfidence >= 0.85 ? 'UNREAD' : 'WAITING');
+  const finalStatus = isRecentDuplicate
+    ? 'WAITING'
+    : (aiResult.aiConfidence >= 0.85 ? 'UNREAD' : 'WAITING');
 
   const processedEmail = await prisma.email.update({
     where: { id: newEmail.id },
@@ -118,7 +130,7 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
       urgency: aiResult.urgency,
       priority: aiResult.priority,
       aiConfidence: aiResult.aiConfidence,
-      spam: aiResult.spam,
+      spam: false,
       duplicate: aiResult.duplicate,
       summary: isRecentDuplicate
         ? `⚠️ Similar reply already sent to this customer within 24h. ${aiResult.summary || ''}`.trim()
@@ -129,8 +141,8 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
     },
   });
 
-  // 4. Save generated AI reply draft (unless it's spam)
-  const hasDraft = !aiResult.spam && !!aiResult.draftReply;
+  // 4. Save generated AI reply draft
+  const hasDraft = !!aiResult.draftReply;
   if (hasDraft) {
     await prisma.autoReply.create({
       data: {
@@ -142,8 +154,11 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
     });
   }
 
+  // 4b. Round-robin assign to whichever active support agent has the fewest open emails right now.
+  await assignEmailRoundRobin(inbox.organizationId, processedEmail.id);
+
   // 5. Create structured audit log record
-  const isManualReview = aiResult.spam || aiResult.aiConfidence < 0.85;
+  const isManualReview = aiResult.aiConfidence < 0.85;
   await prisma.auditLog.create({
     data: {
       action: isManualReview ? 'MANUAL_REVIEW_NEEDED' : 'AUTO_DRAFT_CREATED',

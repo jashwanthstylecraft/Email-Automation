@@ -22,5 +22,8 @@ export async function syncOrgInbox(orgId: string) {
   }
 
   const result = await syncNewMockEmail(inbox.id);
+  if (result.skipped) {
+    return { orgId, success: true, isLive: false, syncedCount: 0, emails: [] };
+  }
   return { orgId, success: true, isLive: false, syncedCount: 1, emails: [result.email] };
 }

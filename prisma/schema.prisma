@@ -16,6 +16,7 @@ model User {
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lastLogin      DateTime?
+  lastSeenAt     DateTime?    // refreshed on every authenticated request -- "active" is derived from this, not a separate stored flag
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
@@ -107,11 +108,17 @@ model Email {
   userFeedback    String?      // Correct Template, Wrong Template, Better Template Exists, etc.
   userFeedbackNotes String?    // user notes / added keywords
   assignedUserId  String?
+  assignedAt      DateTime?
+  lockedByUserId  String?      // support agent currently viewing/working this email; prevents collision
+  lockedAt        DateTime?
+  lastActionByUserId String?
+  lastActionAt    DateTime?
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   autoReplies     AutoReply[]
   failedMatches   FailedMatch[]
   internalNotes   InternalNote[]
+  assignmentLogs  AssignmentLog[]
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 }
@@ -231,6 +238,17 @@ model InternalNote {
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
+}
+
+model AssignmentLog {
+  id                 String   @id @default(uuid())
+  emailId            String
+  email              Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  assignedToUserId   String
+  assignedToName     String?
+  assignedBy         String?  // "round_robin" or the admin's email for manual reassignment
+  assignmentMethod   String   @default("round_robin") // round_robin, manual
+  createdAt          DateTime @default(now())
 }
 
 model LearningLog {

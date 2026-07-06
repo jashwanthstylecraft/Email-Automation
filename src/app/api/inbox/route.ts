@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { syncOrgInbox } from '@/lib/inbox-sync';
+import { getCurrentUser, isAdmin, getClientIp } from '@/lib/auth';
+import { logAudit } from '@/lib/audit';
 
 export async function GET(request: Request) {
   try {
@@ -16,15 +18,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
     }
 
-    const where: any = { organizationId: orgId };
+    // Spam and promotional/social ("Updates") mail is never surfaced in the
+    // inbox -- the sync pipeline no longer stores it, but this filter is a
+    // second line of defense against any pre-existing or manually-inserted
+    // rows in those categories.
+    const where: any = { organizationId: orgId, spam: false, gmailCategory: { not: 'updates' } };
 
     // The "status" param doubles as the mailbox tab selector. Most values
     // map straight to the Email.status column, but a few are pseudo-views
     // that need a different filter entirely.
     if (status === 'PRIMARY') {
       where.gmailCategory = 'primary';
-    } else if (status === 'UPDATES') {
-      where.gmailCategory = 'updates';
     } else if (status === 'DRAFTS') {
       where.autoReplies = { some: { status: 'DRAFT' } };
     } else if (status && status !== 'ALL') {
@@ -62,10 +66,29 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { orgId } = await request.json();
+    const body = await request.json();
+    const { orgId, action } = body;
 
     if (!orgId) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
+    }
+
+    if (action === 'PURGE_SPAM_PROMO') {
+      const user = await getCurrentUser();
+      if (!isAdmin(user)) {
+        return NextResponse.json({ error: 'Only an admin can purge spam/promotional mail.' }, { status: 403 });
+      }
+      const { count } = await prisma.email.deleteMany({
+        where: { organizationId: orgId, OR: [{ spam: true }, { gmailCategory: 'updates' }] },
+      });
+      await logAudit({
+        action: 'SPAM_PROMO_PURGED',
+        user,
+        entityType: 'email',
+        ipAddress: getClientIp(request),
+        details: `${user?.email || 'Admin'} purged ${count} spam/promotional email(s) from the inbox`,
+      });
+      return NextResponse.json({ success: true, deletedCount: count });
     }
 
     const result = await syncOrgInbox(orgId);

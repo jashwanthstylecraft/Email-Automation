@@ -35,6 +35,13 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       fetchAuditLogs();
     };
     initPortal();
+
+    // Activity heartbeat -- keeps this agent "active" for round-robin
+    // eligibility and the admin inactivity warning as long as the app is open.
+    const ping = () => { fetch('/api/auth/heartbeat', { method: 'POST' }).catch(() => {}); };
+    ping();
+    const heartbeatTimer = setInterval(ping, 60000);
+    return () => clearInterval(heartbeatTimer);
   }, []);
 
   if (!user) {
@@ -52,16 +59,19 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
     await syncInbox();
   };
 
+  // Note: "Classify" lives as a panel inside Inbox / Mailbox (side-by-side
+  // with the email list, per the "equal size on the page" requirement)
+  // rather than as its own route, so it isn't a separate nav entry here.
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutGrid },
-    { name: 'Inbox Queue', path: '/inbox', icon: Mail },
+    { name: 'Inbox / Mailbox', path: '/inbox', icon: Mail },
     { name: 'Automation Rules', path: '/rules', icon: Sliders },
-    { name: 'Reply Templates', path: '/templates', icon: Terminal },
+    { name: 'Templates', path: '/templates', icon: Terminal },
     { name: 'Knowledge Base', path: '/knowledge', icon: FileText },
     { name: 'Internal Notes', path: '/notes', icon: StickyNote },
     { name: 'Automation Logs', path: '/logs', icon: Activity },
     { name: 'Audit Logs', path: '/audit-logs', icon: History },
-    { name: 'AI Prompt Settings', path: '/settings', icon: SettingsIcon },
+    { name: 'Settings', path: '/settings', icon: SettingsIcon },
   ];
 
   return (

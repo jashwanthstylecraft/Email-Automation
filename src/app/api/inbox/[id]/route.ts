@@ -2,8 +2,16 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sendOutgoingMail } from '@/lib/mail-sender';
 import { parseKeywords, serializeKeywords } from '@/lib/keyword-engine';
-import { getCurrentUser, getClientIp } from '@/lib/auth';
+import { getCurrentUser, getClientIp, isAdmin } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+
+// Actions that only the assigned agent (or an Admin) may perform -- everyone
+// else viewing an assigned email is read-only. SUBMIT_FEEDBACK is included
+// since accuracy feedback is "work" on the email, not passive viewing.
+const OWNER_ONLY_ACTIONS = new Set([
+  'APPROVE', 'EDIT_DRAFT', 'SEND_CUSTOM', 'REJECT',
+  'CHANGE_STATUS', 'ASSIGN_TEMPLATE', 'ARCHIVE', 'SUBMIT_FEEDBACK',
+]);
 
 export async function GET(
   request: Request,
@@ -89,6 +97,46 @@ export async function GET(
       }
     }
 
+    // Assignment / collision-prevention: a Support Agent opening an email
+    // either lazily claims it (if nobody owns it yet) or refreshes their
+    // "currently viewing" lock (if they already own it). Admins browse
+    // without ever seizing ownership -- they only reassign explicitly via
+    // the ASSIGN_USER action.
+    const currentUser = await getCurrentUser();
+    const includeArgs = { autoReplies: { orderBy: { createdAt: 'desc' as const } }, customer: true };
+    if (currentUser && !isAdmin(currentUser)) {
+      const now = new Date();
+      if (!email.assignedUserId) {
+        await prisma.assignmentLog.create({
+          data: {
+            emailId: email.id,
+            assignedToUserId: currentUser.id,
+            assignedToName: currentUser.email,
+            assignedBy: 'manual_open',
+            assignmentMethod: 'manual',
+          },
+        });
+        email = await prisma.email.update({
+          where: { id: email.id },
+          data: { assignedUserId: currentUser.id, assignedAt: now, lockedByUserId: currentUser.id, lockedAt: now },
+          include: includeArgs,
+        });
+      } else if (email.assignedUserId === currentUser.id) {
+        email = await prisma.email.update({
+          where: { id: email.id },
+          data: { lockedByUserId: currentUser.id, lockedAt: now },
+          include: includeArgs,
+        });
+      }
+    }
+
+    let lockOwnerName: string | null = null;
+    const isLockedToOther = !!email.assignedUserId && email.assignedUserId !== currentUser?.id && !isAdmin(currentUser);
+    if (isLockedToOther) {
+      const owner = await prisma.user.findUnique({ where: { id: email.assignedUserId! } });
+      lockOwnerName = owner?.name || owner?.email || null;
+    }
+
     // Thread/customer context: previous emails from the same sender, most recent first.
     const threadContext = await prisma.email.findMany({
       where: {
@@ -101,7 +149,11 @@ export async function GET(
       select: { id: true, subject: true, status: true, matchedTemplateId: true, createdAt: true },
     });
 
-    return NextResponse.json({ email, threadContext });
+    return NextResponse.json({
+      email,
+      threadContext,
+      lock: { isLockedToOther, ownerName: lockOwnerName },
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -127,6 +179,18 @@ export async function POST(
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
+    if (
+      OWNER_ONLY_ACTIONS.has(action) &&
+      !isAdmin(user) &&
+      email.assignedUserId &&
+      email.assignedUserId !== user?.id
+    ) {
+      return NextResponse.json(
+        { error: 'This email is assigned to another support agent and is view-only for you.' },
+        { status: 403 }
+      );
+    }
+
     if (action === 'APPROVE') {
       // Find the latest draft auto-reply
       const draft = email.autoReplies.find((r) => r.status === 'DRAFT');
@@ -146,7 +210,7 @@ export async function POST(
 
       await prisma.email.update({
         where: { id },
-        data: { status: 'REPLIED' },
+        data: { status: 'REPLIED', lastActionByUserId: user?.id || null, lastActionAt: new Date() },
       });
 
       if (email.customerId) {
@@ -205,6 +269,11 @@ export async function POST(
         });
       }
 
+      await prisma.email.update({
+        where: { id },
+        data: { lastActionByUserId: user?.id || null, lastActionAt: new Date() },
+      });
+
       await logAudit({
         action: 'DRAFT_EDITED',
         user,
@@ -233,7 +302,7 @@ export async function POST(
 
       await prisma.email.update({
         where: { id },
-        data: { status: 'REPLIED' },
+        data: { status: 'REPLIED', lastActionByUserId: user?.id || null, lastActionAt: new Date() },
       });
 
       if (email.customerId) {
@@ -271,7 +340,7 @@ export async function POST(
 
       await prisma.email.update({
         where: { id },
-        data: { status: 'WAITING' }, // Stays in review queue
+        data: { status: 'WAITING', lastActionByUserId: user?.id || null, lastActionAt: new Date() }, // Stays in review queue
       });
 
       await logAudit({
@@ -289,7 +358,7 @@ export async function POST(
     if (action === 'CHANGE_STATUS') {
       const updated = await prisma.email.update({
         where: { id },
-        data: { status },
+        data: { status, lastActionByUserId: user?.id || null, lastActionAt: new Date() },
       });
 
       await logAudit({
@@ -312,7 +381,9 @@ export async function POST(
         where: { id },
         data: {
           matchedTemplateId,
-          aiConfidence: parseFloat(aiConfidence)
+          aiConfidence: parseFloat(aiConfidence),
+          lastActionByUserId: user?.id || null,
+          lastActionAt: new Date(),
         },
       });
 
@@ -331,10 +402,44 @@ export async function POST(
     }
 
     if (action === 'ASSIGN_USER') {
+      if (!isAdmin(user)) {
+        return NextResponse.json({ error: 'Only an admin can reassign an email.' }, { status: 403 });
+      }
+
+      const targetUser = await prisma.user.findUnique({ where: { id: assignedUserId } });
       const updated = await prisma.email.update({
         where: { id },
-        data: { assignedUserId },
+        data: {
+          assignedUserId,
+          assignedAt: new Date(),
+          lockedByUserId: null,
+          lockedAt: null,
+          lastActionByUserId: user?.id || null,
+          lastActionAt: new Date(),
+        },
       });
+
+      await prisma.assignmentLog.create({
+        data: {
+          emailId: id,
+          assignedToUserId: assignedUserId,
+          assignedToName: targetUser?.name || targetUser?.email || null,
+          assignedBy: user?.email || 'admin',
+          assignmentMethod: 'manual',
+        },
+      });
+
+      await logAudit({
+        action: 'EMAIL_REASSIGNED',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        beforeValue: email.assignedUserId,
+        afterValue: assignedUserId,
+        ipAddress: ip,
+        details: `${user?.email || 'Admin'} reassigned the email from ${email.sender} to ${targetUser?.email || assignedUserId}`,
+      });
+
       return NextResponse.json({ success: true, email: updated });
     }
 
@@ -345,7 +450,9 @@ export async function POST(
         where: { id },
         data: {
           userFeedback: feedbackType,
-          userFeedbackNotes: feedbackNotes || newKeyword
+          userFeedbackNotes: feedbackNotes || newKeyword,
+          lastActionByUserId: user?.id || null,
+          lastActionAt: new Date(),
         }
       });
 
@@ -444,7 +551,7 @@ export async function POST(
     if (action === 'ARCHIVE') {
       const updated = await prisma.email.update({
         where: { id },
-        data: { status: 'ESCALATED' }
+        data: { status: 'ESCALATED', lastActionByUserId: user?.id || null, lastActionAt: new Date() }
       });
 
       await logAudit({

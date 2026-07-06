@@ -4,6 +4,7 @@ import { prisma } from './prisma';
 import { runAIPipeline } from './ai-pipeline';
 import { processAutomationRules } from './rules-engine';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
+import { assignEmailRoundRobin } from './assignment-service';
 
 /**
  * Connects to the live IMAP server using environment configurations,
@@ -87,27 +88,9 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         }
 
         if (isPromoOrSocial) {
-          // Import it (so it's visible under the "Updates" mailbox tab
-          // instead of vanishing) but skip the AI pipeline entirely --
-          // these aren't real customer inquiries, so running template
-          // matching against them would just be wasted API calls and noise.
-          console.log(`Filed as Updates (promotional/social/list email) from ${senderEmail}: ${subject}`);
-          const updatesEmail = await prisma.email.create({
-            data: {
-              sender: senderEmail,
-              recipient: inbox.emailAddress,
-              subject: subject,
-              body: body,
-              preview: previewText,
-              status: 'UNREAD',
-              gmailCategory: 'updates',
-              category: 'Promotions / Updates',
-              organizationId: inbox.organizationId,
-            },
-          });
-          await upsertCustomerForEmail(inbox.organizationId, senderEmail, updatesEmail.id);
-          emailsSynced.push(updatesEmail);
-          syncedCount++;
+          // Promotional/social/list mail is never a real customer inquiry --
+          // discard it outright instead of importing it into the inbox.
+          console.log(`Discarded promotional/social/list email from ${senderEmail}: ${subject}`);
           await client.messageFlagsAdd({ seq }, ['\\Seen']);
           continue;
         }
@@ -150,6 +133,19 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
           console.log(`Running AI classifications for live email ID ${newEmail.id}...`);
           const aiResult = await runAIPipeline(newEmail.body, newEmail.subject, newEmail.sender, inbox.organizationId);
 
+          // Spam is never surfaced in the inbox -- discard it outright.
+          if (aiResult.spam) {
+            await prisma.email.delete({ where: { id: newEmail.id } });
+            await prisma.auditLog.create({
+              data: {
+                action: 'SPAM_DISCARDED',
+                details: JSON.stringify({ subject, sender: senderEmail }),
+              },
+            });
+            await client.messageFlagsAdd({ seq }, ['\\Seen']);
+            continue;
+          }
+
           // Get template name if matched
           const templates = await prisma.template.findMany({ where: { organizationId: inbox.organizationId } });
           const matchedTmplName = aiResult.matchedTemplateId
@@ -165,11 +161,9 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
 
           // 3. Update Email details in DB with new logging/matching fields
           // If confidence is >= 85%, status is UNREAD. Otherwise WAITING (Manual Review Queue)
-          const finalStatus = aiResult.spam
-            ? 'SPAM'
-            : isRecentDuplicate
-              ? 'WAITING'
-              : (aiResult.aiConfidence >= 0.85 ? 'UNREAD' : 'WAITING');
+          const finalStatus = isRecentDuplicate
+            ? 'WAITING'
+            : (aiResult.aiConfidence >= 0.85 ? 'UNREAD' : 'WAITING');
 
           const processedEmail = await prisma.email.update({
             where: { id: newEmail.id },
@@ -180,7 +174,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
               urgency: aiResult.urgency,
               priority: aiResult.priority,
               aiConfidence: aiResult.aiConfidence,
-              spam: aiResult.spam,
+              spam: false,
               duplicate: aiResult.duplicate,
               summary: isRecentDuplicate
                 ? `⚠️ Similar reply already sent to this customer within 24h. ${aiResult.summary || ''}`.trim()
@@ -191,8 +185,8 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             },
           });
 
-          // 4. Save generated AI reply draft (unless it's spam)
-          const hasDraft = !aiResult.spam && !!aiResult.draftReply;
+          // 4. Save generated AI reply draft
+          const hasDraft = !!aiResult.draftReply;
           if (hasDraft) {
             await prisma.autoReply.create({
               data: {
@@ -204,8 +198,11 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             });
           }
 
+          // 4b. Round-robin assign to whichever active support agent has the fewest open emails right now.
+          await assignEmailRoundRobin(inbox.organizationId, processedEmail.id);
+
           // 5. Create structured audit log record
-          const isManualReview = aiResult.spam || aiResult.aiConfidence < 0.85;
+          const isManualReview = aiResult.aiConfidence < 0.85;
           await prisma.auditLog.create({
             data: {
               action: isManualReview ? 'MANUAL_REVIEW_NEEDED' : 'AUTO_DRAFT_CREATED',

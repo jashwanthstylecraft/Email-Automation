@@ -9,6 +9,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search');
     const templateId = searchParams.get('templateId');
     const userId = searchParams.get('userId');
+    const emailId = searchParams.get('emailId');
 
     if (!orgId) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
@@ -17,6 +18,7 @@ export async function GET(request: Request) {
     const where: any = { organizationId: orgId };
     if (templateId) where.relatedTemplateId = templateId;
     if (userId) where.createdByUserId = userId;
+    if (emailId) where.relatedEmailId = emailId;
     if (search) {
       where.OR = [
         { title: { contains: search, mode: 'insensitive' } },
@@ -27,6 +29,7 @@ export async function GET(request: Request) {
     const notes = await prisma.internalNote.findMany({
       where,
       orderBy: [{ isPinned: 'desc' }, { updatedAt: 'desc' }],
+      include: { relatedEmail: { select: { id: true, subject: true, sender: true } } },
     });
 
     return NextResponse.json({ notes });

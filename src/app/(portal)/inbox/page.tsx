@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, Megaphone, FileEdit, Archive
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
 
@@ -16,7 +16,7 @@ export default function InboxPage() {
     approveDraft, rejectDraft, saveDraftEdits, sendCustomReply,
     changeEmailStatus, assignEmailUser, isLoading, user,
     templates, fetchTemplates, saveTemplate, deleteEmail, archiveEmail, syncInbox, fetchDashboard,
-    dashboardCharts
+    dashboardCharts, saveNote, workload, fetchWorkload
   } = useStore();
 
   const searchParams = useSearchParams();
@@ -52,16 +52,65 @@ export default function InboxPage() {
 
   // Customer thread context (previous emails from the same sender)
   const [threadContext, setThreadContext] = useState<any[]>([]);
+  // Collision-prevention lock: set when this email is assigned to a
+  // different support agent, making it view-only for the current user.
+  const [lockInfo, setLockInfo] = useState<{ isLockedToOther: boolean; ownerName: string | null }>({ isLockedToOther: false, ownerName: null });
   useEffect(() => {
     if (!selectedEmail) {
       setThreadContext([]);
+      setLockInfo({ isLockedToOther: false, ownerName: null });
       return;
     }
     fetch(`/api/inbox/${selectedEmail.id}`)
       .then(res => res.json())
-      .then(data => setThreadContext(data.threadContext || []))
-      .catch(() => setThreadContext([]));
+      .then(data => {
+        setThreadContext(data.threadContext || []);
+        setLockInfo(data.lock || { isLockedToOther: false, ownerName: null });
+      })
+      .catch(() => {
+        setThreadContext([]);
+        setLockInfo({ isLockedToOther: false, ownerName: null });
+      });
   }, [selectedEmail?.id]);
+  const isReadOnly = lockInfo.isLockedToOther;
+
+  // Internal Notes attached to this specific email -- staff-only, never
+  // sent to the customer, shown between the message body and the AI draft.
+  const [emailNotes, setEmailNotes] = useState<any[]>([]);
+  const [newNoteText, setNewNoteText] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+
+  const loadEmailNotes = async (emailId: string) => {
+    if (!user) return;
+    const params = new URLSearchParams({ orgId: user.organizationId, emailId });
+    const res = await fetch(`/api/notes?${params}`);
+    const data = await res.json();
+    setEmailNotes(data.notes || []);
+  };
+
+  useEffect(() => {
+    if (!selectedEmail) {
+      setEmailNotes([]);
+      return;
+    }
+    loadEmailNotes(selectedEmail.id);
+  }, [selectedEmail?.id]);
+
+  const handleAddEmailNote = async () => {
+    if (!selectedEmail || !newNoteText.trim()) return;
+    await saveNote({ title: newNoteText.trim().slice(0, 60), noteBody: newNoteText.trim(), relatedEmailId: selectedEmail.id });
+    setNewNoteText('');
+    await loadEmailNotes(selectedEmail.id);
+  };
+
+  const handleSaveNoteEdit = async (noteId: string) => {
+    if (!editingNoteText.trim()) return;
+    await saveNote({ id: noteId, title: editingNoteText.trim().slice(0, 60), noteBody: editingNoteText.trim() });
+    setEditingNoteId(null);
+    setEditingNoteText('');
+    if (selectedEmail) await loadEmailNotes(selectedEmail.id);
+  };
 
   // Edit history for this email's draft (audit log entries)
   const [editHistory, setEditHistory] = useState<any[]>([]);
@@ -82,10 +131,35 @@ export default function InboxPage() {
     fetchTemplates();
   }, [activeFilter, search, activeCategory]);
 
-  // Category counts for the classification sidebar (independent of the current filter)
+  // Category counts and per-agent workload lanes for the Classify panel
+  // (independent of the current Mailbox filter)
   useEffect(() => {
     fetchDashboard({ silent: true });
+    fetchWorkload();
   }, []);
+
+  // Classify panel: broad search across sender, subject, matched template
+  // name, assigned agent, status, and matched keywords -- separate from the
+  // Mailbox list's sender/subject-only search box.
+  const [classifyQuery, setClassifyQuery] = useState('');
+  const classifyResults = (() => {
+    const q = classifyQuery.trim().toLowerCase();
+    if (!q) return [];
+    return emails.filter((e) => {
+      const tmpl = templates.find(t => t.id === e.matchedTemplateId);
+      const agent = workload.find((w: any) => w.userId === e.assignedUserId);
+      const keywordBlob = tmpl ? JSON.stringify(parseKeywords(tmpl.keywords)).toLowerCase() : '';
+      return (
+        e.sender.toLowerCase().includes(q) ||
+        e.subject.toLowerCase().includes(q) ||
+        e.status.toLowerCase().includes(q) ||
+        (tmpl?.name.toLowerCase().includes(q)) ||
+        (agent?.name.toLowerCase().includes(q)) ||
+        (agent?.email.toLowerCase().includes(q)) ||
+        keywordBlob.includes(q)
+      );
+    }).slice(0, 30);
+  })();
 
   // Deep-link support: /inbox?emailId=... (e.g. from a customer profile) auto-selects that email once loaded
   useEffect(() => {
@@ -204,17 +278,9 @@ export default function InboxPage() {
       })
     });
 
-    await fetch(`/api/inbox/${selectedEmail.id}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'SUBMIT_FEEDBACK',
-        feedbackType: 'Wrong Template Override',
-        feedbackNotes: `User manually reassigned email to template ID: ${templateId}`,
-        approvedTemplateId: templateId,
-        rejectedTemplateId: selectedEmail.matchedTemplateId
-      })
-    });
+    // NOTE: selecting a template here (dropdown or suggestion card) must
+    // NEVER auto-submit match-accuracy feedback -- that only happens when
+    // an agent manually clicks a feedback button (Correct/Wrong/etc. below).
 
     // 3. Sync list once
     await fetchEmails({ status: activeFilter, search });
@@ -293,10 +359,11 @@ export default function InboxPage() {
     setShowKeywordForm(false);
   };
 
+  // Spam and Updates (promotional/social) are deliberately excluded --
+  // the sync pipeline never stores them, so there's no tab for them here.
   const filterTabs = [
     { label: 'All', value: 'ALL', icon: InboxIcon },
     { label: 'Primary', value: 'PRIMARY', icon: CircleDot },
-    { label: 'Updates', value: 'UPDATES', icon: Megaphone },
     { label: 'Drafts', value: 'DRAFTS', icon: FileEdit },
     { label: 'Sent', value: 'REPLIED', icon: CheckCheck },
     { label: 'Manual Review', value: 'WAITING', icon: ShieldQuestion },
@@ -375,80 +442,143 @@ export default function InboxPage() {
 
   return (
     <div className="flex h-[calc(100vh-10rem)] w-full gap-6 text-xs">
-      {/* Mailbox + Classification sidebar */}
-      <div className="w-36 flex-shrink-0 flex flex-col gap-4">
-        {/* Mailbox folders (regular mail-client sections) */}
-        <div className="flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
-          <div className="p-4 border-b border-white/5 bg-[#121217]/30">
-            <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
-              <InboxIcon className="w-3.5 h-3.5 text-violet-400" />
-              Mailbox
-            </h3>
-          </div>
-          <div className="p-2 space-y-1">
-            {filterTabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.value}
-                  onClick={() => setActiveFilter(tab.value)}
-                  title={tab.label}
-                  className={`w-full flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-left transition-colors cursor-pointer ${
-                    activeFilter === tab.value
-                      ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className="truncate">{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
+      {/* Mailbox folders (regular mail-client sections) */}
+      <div className="w-32 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
+        <div className="p-4 border-b border-white/5 bg-[#121217]/30">
+          <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+            <InboxIcon className="w-3.5 h-3.5 text-violet-400" />
+            Mailbox
+          </h3>
         </div>
-
-        {/* Category classification */}
-        <div className="flex-1 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60 min-h-0">
-          <div className="p-4 border-b border-white/5 bg-[#121217]/30">
-            <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5 text-violet-400" />
-              Classify
-            </h3>
-            <p className="text-[9px] text-gray-500 mt-0.5">Filter inbox by category</p>
-          </div>
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            <button
-              onClick={() => setActiveCategory('ALL')}
-              className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
-                activeCategory === 'ALL'
-                  ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
-                  : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-              }`}
-            >
-              <span className="truncate">All Categories</span>
-              <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{totalCategorized}</span>
-            </button>
-
-            {categoryList.map((cat: any) => (
+        <div className="p-2 space-y-1 overflow-y-auto">
+          {filterTabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
               <button
-                key={cat.name}
-                onClick={() => setActiveCategory(cat.name)}
-                title={cat.name}
-                className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
-                  activeCategory === cat.name
+                key={tab.value}
+                onClick={() => setActiveFilter(tab.value)}
+                title={tab.label}
+                className={`w-full flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-left transition-colors cursor-pointer ${
+                  activeFilter === tab.value
                     ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
                     : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
                 }`}
               >
-                <span className="truncate">{cat.name}</span>
-                <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{cat.value}</span>
+                <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate">{tab.label}</span>
               </button>
-            ))}
+            );
+          })}
+        </div>
+      </div>
 
-            {categoryList.length === 0 && (
-              <p className="text-center text-gray-500 text-[10px] py-4 px-2 leading-relaxed">No categorized emails yet.</p>
-            )}
+      {/* Classify panel: equal width to the Inbox list so both are easy to view side by side */}
+      <div className="w-72 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-white/5 bg-[#0b0b0f]/60">
+        <div className="p-4 border-b border-white/5 bg-[#121217]/30 space-y-3">
+          <h3 className="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-1.5">
+            <Tag className="w-3.5 h-3.5 text-violet-400" />
+            Classify
+          </h3>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-gray-500 absolute left-2.5 top-2" />
+            <input
+              type="text"
+              value={classifyQuery}
+              onChange={(e) => setClassifyQuery(e.target.value)}
+              placeholder="Search sender, subject, template, agent, status..."
+              className="w-full bg-black/40 border border-white/10 rounded-lg pl-7 pr-2.5 py-1.5 text-[10px] text-white outline-none focus:border-violet-500 transition-colors"
+            />
           </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {classifyQuery.trim() ? (
+            <div className="p-2 space-y-1.5">
+              <p className="text-[9px] text-gray-500 uppercase font-semibold px-1">{classifyResults.length} match{classifyResults.length === 1 ? '' : 'es'}</p>
+              {classifyResults.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => selectEmail(e)}
+                  className={`w-full text-left p-2.5 rounded-lg border transition-colors cursor-pointer ${
+                    selectedEmail?.id === e.id
+                      ? 'bg-violet-600/20 border-violet-500/30'
+                      : 'bg-white/5 border-white/5 hover:bg-white/10'
+                  }`}
+                >
+                  <p className="text-white font-semibold truncate">{e.subject}</p>
+                  <p className="text-[9px] text-gray-500 truncate mt-0.5">{e.sender}</p>
+                  <p className="text-[9px] text-violet-400 mt-0.5">{e.status}</p>
+                </button>
+              ))}
+              {classifyResults.length === 0 && (
+                <p className="text-center text-gray-500 text-[10px] py-4 px-2 leading-relaxed">No matches for "{classifyQuery}".</p>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Support agent lanes: admins see all three, agents see only their own row */}
+              {workload.length > 0 && (
+                <div className="p-2 space-y-1.5 border-b border-white/5">
+                  <p className="text-[9px] text-gray-500 uppercase font-semibold px-1 pb-1">Support Lanes</p>
+                  {workload.map((w: any) => (
+                    <div
+                      key={w.userId}
+                      className={`p-2.5 rounded-lg border ${w.isInactiveWithPending ? 'border-red-500/40 bg-red-600/10' : 'border-white/5 bg-white/5'}`}
+                    >
+                      <div className="flex justify-between items-center gap-1">
+                        <span className="text-white font-bold truncate">{w.name}</span>
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${w.isActive ? 'bg-emerald-400' : 'bg-gray-500'}`} title={w.isActive ? 'Active' : 'Offline'}></span>
+                      </div>
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1 font-mono text-[9px] text-gray-400">
+                        <span>Assigned {w.assignedTotal}</span>
+                        <span>Replied {w.respondedCount}</span>
+                        <span>Left {w.leftToRespond}</span>
+                        <span className={w.overdueCount > 0 ? 'text-red-400 font-bold' : ''}>Overdue {w.overdueCount}</span>
+                      </div>
+                      {w.isInactiveWithPending && (
+                        <p className="text-[9px] text-red-400 font-bold mt-1">⚠ Inactive / pending</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Category classification */}
+              <div className="p-2 space-y-1">
+                <button
+                  onClick={() => setActiveCategory('ALL')}
+                  className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
+                    activeCategory === 'ALL'
+                      ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <span className="truncate">All Categories</span>
+                  <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{totalCategorized}</span>
+                </button>
+
+                {categoryList.map((cat: any) => (
+                  <button
+                    key={cat.name}
+                    onClick={() => setActiveCategory(cat.name)}
+                    title={cat.name}
+                    className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
+                      activeCategory === cat.name
+                        ? 'bg-violet-600/20 text-violet-300 border border-violet-500/30'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
+                    }`}
+                  >
+                    <span className="truncate">{cat.name}</span>
+                    <span className="text-[9px] font-mono text-gray-500 flex-shrink-0">{cat.value}</span>
+                  </button>
+                ))}
+
+                {categoryList.length === 0 && (
+                  <p className="text-center text-gray-500 text-[10px] py-4 px-2 leading-relaxed">No categorized emails yet.</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -590,6 +720,15 @@ export default function InboxPage() {
           <>
             <div className="p-6 space-y-6 flex-1">
 
+              {isReadOnly && (
+                <div className="p-3 bg-red-600/10 border border-red-500/30 rounded-xl flex items-center gap-2 text-red-300">
+                  <UserCheck className="w-4 h-4 flex-shrink-0" />
+                  <span className="text-[11px] font-semibold">
+                    Currently being handled by {lockInfo.ownerName || 'another support agent'}. You can view this email but cannot edit the draft, submit feedback, or send a reply.
+                  </span>
+                </div>
+              )}
+
               {/* Customer Profile Panel */}
               {(selectedEmail.customer || threadContext.length > 0) && (
                 <div className="glass-panel p-4 rounded-xl border border-white/5 bg-[#121217]/50 space-y-3">
@@ -631,6 +770,162 @@ export default function InboxPage() {
                 </div>
               )}
 
+              {/* Email Content Box (Customer Email) */}
+              <div>
+                <div className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-t-xl text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-gray-400" />
+                  Original Message Body
+                </div>
+                <div className="bg-black/20 border border-t-0 border-white/10 p-5 rounded-b-xl text-xs text-gray-300 whitespace-pre-wrap leading-relaxed">
+                  {selectedEmail.body}
+                </div>
+              </div>
+
+              {/* Internal Notes (staff-only -- never sent to the customer) -- sits between the Customer Email above and the AI Response Draft below */}
+              <div>
+                <div className="px-3 py-1.5 bg-cyan-600/10 border border-cyan-500/20 rounded-t-xl text-[10px] font-semibold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <StickyNote className="w-3.5 h-3.5 text-cyan-400" />
+                  Internal Notes (Staff Only — Never Sent to Customer)
+                </div>
+                <div className="bg-cyan-950/5 border border-t-0 border-cyan-500/20 rounded-b-xl p-4 space-y-3">
+                  {emailNotes.length === 0 && (
+                    <p className="text-[10px] text-gray-500 text-center py-2">No internal notes on this email yet.</p>
+                  )}
+                  {emailNotes.map((note: any) => (
+                    <div key={note.id} className="bg-white/5 border border-white/5 rounded-lg p-3 text-[11px]">
+                      {editingNoteId === note.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editingNoteText}
+                            onChange={(e) => setEditingNoteText(e.target.value)}
+                            rows={3}
+                            className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-cyan-500 resize-none text-[11px]"
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }} className="text-[10px] text-gray-400 hover:text-white font-semibold cursor-pointer">Cancel</button>
+                            <button onClick={() => handleSaveNoteEdit(note.id)} className="text-[10px] text-cyan-300 hover:text-cyan-200 font-semibold cursor-pointer">Save</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-gray-200 whitespace-pre-wrap leading-relaxed">{note.body}</p>
+                          <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/5">
+                            <span className="text-gray-500 text-[9px]">
+                              {note.createdByName || 'Unknown'} · {new Date(note.updatedAt || note.createdAt).toLocaleString()}
+                            </span>
+                            <button
+                              onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.body); }}
+                              className="text-[9px] text-cyan-400 hover:text-cyan-300 font-semibold cursor-pointer flex items-center gap-0.5"
+                            >
+                              <Edit3 className="w-2.5 h-2.5" /> Edit
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  <div className="flex gap-2 items-start pt-1">
+                    <textarea
+                      value={newNoteText}
+                      onChange={(e) => setNewNoteText(e.target.value)}
+                      rows={2}
+                      placeholder="Add an internal note about this email (visible only to staff)..."
+                      className="flex-1 bg-black/40 border border-white/10 rounded-lg p-2.5 text-white outline-none focus:border-cyan-500 resize-none text-[11px]"
+                    />
+                    <button
+                      onClick={handleAddEmailNote}
+                      disabled={!newNoteText.trim()}
+                      className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[10px] rounded-lg font-semibold cursor-pointer transition-colors flex-shrink-0"
+                    >
+                      Add Note
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* AI Draft Section */}
+              {(latestDraft || replyText) && !isCustomMode && (
+                <div>
+                  {selectedEmail.summary?.includes('Similar reply already sent') && (
+                    <div className="mb-2 p-2.5 bg-amber-600/10 border border-amber-500/20 rounded-lg flex items-center gap-2 text-amber-300">
+                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="text-[11px] font-semibold">⚠️ Similar reply already sent to this customer within the last 24 hours — review carefully before sending again.</span>
+                    </div>
+                  )}
+                  <div className="px-3 py-1.5 bg-violet-600/10 border border-violet-500/20 rounded-t-xl text-[10px] font-semibold text-violet-300 uppercase tracking-wider flex justify-between items-center flex-wrap gap-2">
+                    <span className="flex items-center gap-1.5 truncate max-w-[60%]">
+                      <ShieldCheck className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
+                      AI Response Draft (Auto Generated) — Chosen: "{currentlyMatchedTemplateName}"
+                      {latestDraft?.wasEdited && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 text-[9px] normal-case font-bold">Edited Draft</span>
+                      )}
+                    </span>
+                    <div className="flex gap-3 items-center">
+                      {editHistory.length > 0 && (
+                        <button onClick={() => setShowEditHistory(!showEditHistory)} className="text-[10px] text-gray-400 hover:text-white font-semibold cursor-pointer normal-case">
+                          {showEditHistory ? 'Hide' : 'Show'} Edit History ({editHistory.length})
+                        </button>
+                      )}
+                      {isEditingDraft ? (
+                        <>
+                          <button onClick={handleSaveDraft} className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer">
+                            Save Edits
+                          </button>
+                          {selectedEmail.matchedTemplateId && (
+                            <button onClick={handleSaveTemplateUpdate} className="text-xs text-violet-300 hover:text-violet-200 font-semibold flex items-center gap-1 cursor-pointer">
+                              <Save className="w-3 h-3" /> Update Response Template
+                            </button>
+                          )}
+                          {selectedEmail.matchedTemplateId && (
+                            <button onClick={handleResetToTemplate} className="text-xs text-amber-300 hover:text-amber-200 font-semibold cursor-pointer">
+                              Reset to Template
+                            </button>
+                          )}
+                          <button onClick={() => { setReplyText(latestDraft.responseBody); setIsEditingDraft(false); }} className="text-xs text-gray-400 hover:text-white font-semibold cursor-pointer">
+                            Cancel
+                          </button>
+                        </>
+                      ) : !isReadOnly ? (
+                        <button onClick={() => setIsEditingDraft(true)} className="text-xs text-violet-300 hover:text-violet-200 font-semibold flex items-center gap-0.5 cursor-pointer">
+                          <Edit3 className="w-3 h-3" /> Edit Draft
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="bg-violet-950/5 border border-t-0 border-violet-500/20 rounded-b-xl overflow-hidden">
+                    {isEditingDraft ? (
+                      <textarea
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        rows={8}
+                        className="w-full bg-black/40 border-0 p-5 text-xs text-white outline-none focus:ring-0 resize-none font-sans leading-relaxed"
+                      />
+                    ) : (
+                      <div className="p-5 text-xs text-violet-200 whitespace-pre-wrap leading-relaxed font-sans">
+                        {replyText}
+                      </div>
+                    )}
+                    {showEditHistory && editHistory.length > 0 && (
+                      <div className="border-t border-violet-500/20 p-4 space-y-2 bg-black/20">
+                        <p className="text-[9px] text-gray-500 uppercase font-semibold tracking-wider">Edit History</p>
+                        {editHistory.map((h: any) => (
+                          <div key={h.id} className="text-[10px] bg-white/5 p-2.5 rounded border border-white/5">
+                            <div className="flex justify-between">
+                              <span className="text-white font-semibold">{h.userEmail || 'Unknown'}</span>
+                              <span className="text-gray-500">{new Date(h.createdAt).toLocaleString()}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 mt-1.5">
+                              <p className="text-gray-500 bg-black/20 p-1.5 rounded max-h-16 overflow-y-auto whitespace-pre-wrap">{h.beforeValue}</p>
+                              <p className="text-emerald-300 bg-black/20 p-1.5 rounded max-h-16 overflow-y-auto whitespace-pre-wrap">{h.afterValue}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Detailed AI Response Draft Specs */}
               <div className="glass-panel p-4 rounded-xl border border-white/5 bg-[#121217]/50 space-y-3">
                 <div className="flex items-center gap-2 text-violet-400 font-bold border-b border-white/5 pb-2">
@@ -653,8 +948,8 @@ export default function InboxPage() {
                   <div>
                     <span className="text-gray-500 uppercase font-semibold">Status Flag:</span>
                     <p className="text-violet-300 font-bold mt-1 uppercase">
-                      {selectedEmail.status === 'REPLIED' ? 'Sent' : 
-                       selectedEmail.status === 'UNREAD' && selectedEmail.aiConfidence >= 0.85 ? 'Draft' : 
+                      {selectedEmail.status === 'REPLIED' ? 'Sent' :
+                       selectedEmail.status === 'UNREAD' && selectedEmail.aiConfidence >= 0.85 ? 'Draft' :
                        selectedEmail.aiConfidence >= 0.60 ? 'Needs Review' : 'Manual Review'}
                     </p>
                   </div>
@@ -688,7 +983,8 @@ export default function InboxPage() {
                       </div>
                       <button
                         onClick={() => handleAssignTemplate(tmpl.id)}
-                        className="w-full text-center py-1 bg-violet-600 hover:bg-violet-500 text-[10px] text-white rounded font-semibold cursor-pointer transition-colors"
+                        disabled={isReadOnly}
+                        className="w-full text-center py-1 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-[10px] text-white rounded font-semibold cursor-pointer transition-colors"
                       >
                         Assign Response
                       </button>
@@ -696,7 +992,7 @@ export default function InboxPage() {
                   ))}
 
                   {/* Manual Dropdown Selector Card */}
-                  <div 
+                  <div
                     className="p-3 bg-violet-950/10 border border-violet-500/20 rounded-lg flex flex-col justify-between space-y-2 relative"
                     onMouseLeave={() => setIsDropdownOpen(false)}
                   >
@@ -704,27 +1000,28 @@ export default function InboxPage() {
                       <span className="font-bold text-violet-300 block">Manual Override</span>
                       <p className="text-[9px] text-gray-500 mt-1 leading-relaxed">Type to filter and assign any active template.</p>
                     </div>
-                    
+
                     <div className="relative">
                       <input
                         type="text"
                         placeholder="Search templates..."
                         value={searchTmplQuery}
+                        disabled={isReadOnly}
                         onChange={(e) => {
                           setSearchTmplQuery(e.target.value);
                           setIsDropdownOpen(true);
                         }}
                         onFocus={() => setIsDropdownOpen(true)}
-                        className="bg-black/40 border border-white/10 rounded px-2.5 py-1 text-gray-200 outline-none focus:border-violet-500 text-[10px] w-full pr-6"
+                        className="bg-black/40 border border-white/10 rounded px-2.5 py-1 text-gray-200 outline-none focus:border-violet-500 text-[10px] w-full pr-6 disabled:opacity-40 disabled:cursor-not-allowed"
                       />
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                         className="absolute right-2 top-1.5 text-gray-400 hover:text-white text-[9px] cursor-pointer"
                       >
                         ▼
                       </button>
-                      
+
                       {isDropdownOpen && (
                         <div className="absolute z-50 left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#0f0f15] border border-white/10 rounded-lg shadow-xl divide-y divide-white/5 scrollbar-thin">
                           {templates
@@ -777,10 +1074,10 @@ export default function InboxPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => handleFeedback('Correct Template')}
-                    disabled={!!selectedEmail.userFeedback}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
                     className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback 
-                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50' 
+                      selectedEmail.userFeedback
+                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50'
                         : 'border-white/10 hover:border-emerald-500 bg-white/5 hover:bg-emerald-600/10 text-gray-300 hover:text-emerald-400 cursor-pointer'
                     }`}
                   >
@@ -791,10 +1088,10 @@ export default function InboxPage() {
                       setFlaggedWrong(true);
                       handleFeedback('Wrong Template');
                     }}
-                    disabled={!!selectedEmail.userFeedback}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
                     className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback 
-                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50' 
+                      selectedEmail.userFeedback
+                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50'
                         : 'border-white/10 hover:border-red-500 bg-white/5 hover:bg-red-600/10 text-gray-300 hover:text-red-400 cursor-pointer'
                     }`}
                   >
@@ -807,10 +1104,10 @@ export default function InboxPage() {
                       const inputEl = document.querySelector('input[placeholder="Search templates..."]') as HTMLInputElement;
                       if (inputEl) inputEl.focus();
                     }}
-                    disabled={!!selectedEmail.userFeedback}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
                     className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback 
-                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50' 
+                      selectedEmail.userFeedback
+                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50'
                         : 'border-white/10 hover:border-amber-500 bg-white/5 hover:bg-amber-600/10 text-gray-300 hover:text-amber-400 cursor-pointer'
                     }`}
                   >
@@ -818,10 +1115,10 @@ export default function InboxPage() {
                   </button>
                   <button
                     onClick={() => setShowKeywordForm(!showKeywordForm)}
-                    disabled={!!selectedEmail.userFeedback}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
                     className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback 
-                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50' 
+                      selectedEmail.userFeedback
+                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50'
                         : 'border-white/10 hover:border-cyan-500 bg-white/5 hover:bg-cyan-600/10 text-gray-300 hover:text-cyan-400 cursor-pointer'
                     }`}
                   >
@@ -829,10 +1126,10 @@ export default function InboxPage() {
                   </button>
                   <button
                     onClick={() => handleFeedback('Disable This Rule')}
-                    disabled={!!selectedEmail.userFeedback}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
                     className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback 
-                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50' 
+                      selectedEmail.userFeedback
+                        ? 'border-white/5 bg-white/5 text-gray-600 cursor-not-allowed opacity-50'
                         : 'border-white/10 hover:border-red-500 bg-white/5 hover:bg-red-600/15 text-gray-300 hover:text-red-400 cursor-pointer'
                     }`}
                   >
@@ -864,100 +1161,6 @@ export default function InboxPage() {
                   </form>
                 )}
               </div>
-
-              {/* Email Content Box */}
-              <div>
-                <div className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-t-xl text-[10px] font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-gray-400" />
-                  Original Message Body
-                </div>
-                <div className="bg-black/20 border border-t-0 border-white/10 p-5 rounded-b-xl text-xs text-gray-300 whitespace-pre-wrap leading-relaxed">
-                  {selectedEmail.body}
-                </div>
-              </div>
-
-              {/* AI Draft Section */}
-              {(latestDraft || replyText) && !isCustomMode && (
-                <div>
-                  {selectedEmail.summary?.includes('Similar reply already sent') && (
-                    <div className="mb-2 p-2.5 bg-amber-600/10 border border-amber-500/20 rounded-lg flex items-center gap-2 text-amber-300">
-                      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-                      <span className="text-[11px] font-semibold">⚠️ Similar reply already sent to this customer within the last 24 hours — review carefully before sending again.</span>
-                    </div>
-                  )}
-                  <div className="px-3 py-1.5 bg-violet-600/10 border border-violet-500/20 rounded-t-xl text-[10px] font-semibold text-violet-300 uppercase tracking-wider flex justify-between items-center flex-wrap gap-2">
-                    <span className="flex items-center gap-1.5 truncate max-w-[60%]">
-                      <ShieldCheck className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
-                      AI Response Draft (Auto Generated) — Chosen: "{currentlyMatchedTemplateName}"
-                      {latestDraft?.wasEdited && (
-                        <span className="ml-1.5 px-1.5 py-0.5 rounded bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 text-[9px] normal-case font-bold">Edited Draft</span>
-                      )}
-                    </span>
-                    <div className="flex gap-3 items-center">
-                      {editHistory.length > 0 && (
-                        <button onClick={() => setShowEditHistory(!showEditHistory)} className="text-[10px] text-gray-400 hover:text-white font-semibold cursor-pointer normal-case">
-                          {showEditHistory ? 'Hide' : 'Show'} Edit History ({editHistory.length})
-                        </button>
-                      )}
-                      {isEditingDraft ? (
-                        <>
-                          <button onClick={handleSaveDraft} className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer">
-                            Save Edits
-                          </button>
-                          {selectedEmail.matchedTemplateId && (
-                            <button onClick={handleSaveTemplateUpdate} className="text-xs text-violet-300 hover:text-violet-200 font-semibold flex items-center gap-1 cursor-pointer">
-                              <Save className="w-3 h-3" /> Update Response Template
-                            </button>
-                          )}
-                          {selectedEmail.matchedTemplateId && (
-                            <button onClick={handleResetToTemplate} className="text-xs text-amber-300 hover:text-amber-200 font-semibold cursor-pointer">
-                              Reset to Template
-                            </button>
-                          )}
-                          <button onClick={() => { setReplyText(latestDraft.responseBody); setIsEditingDraft(false); }} className="text-xs text-gray-400 hover:text-white font-semibold cursor-pointer">
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <button onClick={() => setIsEditingDraft(true)} className="text-xs text-violet-300 hover:text-violet-200 font-semibold flex items-center gap-0.5 cursor-pointer">
-                          <Edit3 className="w-3 h-3" /> Edit Draft
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="bg-violet-950/5 border border-t-0 border-violet-500/20 rounded-b-xl overflow-hidden">
-                    {isEditingDraft ? (
-                      <textarea
-                        value={replyText}
-                        onChange={(e) => setReplyText(e.target.value)}
-                        rows={8}
-                        className="w-full bg-black/40 border-0 p-5 text-xs text-white outline-none focus:ring-0 resize-none font-sans leading-relaxed"
-                      />
-                    ) : (
-                      <div className="p-5 text-xs text-violet-200 whitespace-pre-wrap leading-relaxed font-sans">
-                        {replyText}
-                      </div>
-                    )}
-                    {showEditHistory && editHistory.length > 0 && (
-                      <div className="border-t border-violet-500/20 p-4 space-y-2 bg-black/20">
-                        <p className="text-[9px] text-gray-500 uppercase font-semibold tracking-wider">Edit History</p>
-                        {editHistory.map((h: any) => (
-                          <div key={h.id} className="text-[10px] bg-white/5 p-2.5 rounded border border-white/5">
-                            <div className="flex justify-between">
-                              <span className="text-white font-semibold">{h.userEmail || 'Unknown'}</span>
-                              <span className="text-gray-500">{new Date(h.createdAt).toLocaleString()}</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-2 mt-1.5">
-                              <p className="text-gray-500 bg-black/20 p-1.5 rounded max-h-16 overflow-y-auto whitespace-pre-wrap">{h.beforeValue}</p>
-                              <p className="text-emerald-300 bg-black/20 p-1.5 rounded max-h-16 overflow-y-auto whitespace-pre-wrap">{h.afterValue}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* Custom manual reply console */}
               {isCustomMode && (
@@ -1010,7 +1213,7 @@ export default function InboxPage() {
             {/* Bottom Footer Actions */}
             <div className="p-6 border-t border-white/5 bg-black/20 flex justify-between items-center gap-4 flex-shrink-0">
               <div className="flex gap-2">
-                {!sentReply && !isCustomMode && (
+                {!sentReply && !isCustomMode && !isReadOnly && (
                   <button
                     onClick={() => setIsCustomMode(true)}
                     className="px-4 py-2 border border-white/10 hover:border-violet-500/30 bg-white/5 hover:bg-white/10 text-xs rounded-lg font-semibold text-gray-300 hover:text-white transition-all cursor-pointer"
@@ -1024,7 +1227,8 @@ export default function InboxPage() {
                       deleteEmail(selectedEmail.id);
                     }
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 border border-red-500/20 hover:border-red-500 bg-red-600/5 hover:bg-red-600/15 text-xs rounded-lg font-semibold text-red-300 transition-all cursor-pointer"
+                  disabled={isReadOnly}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-red-500/20 hover:border-red-500 bg-red-600/5 hover:bg-red-600/15 text-xs rounded-lg font-semibold text-red-300 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   title="Delete Email Permanently"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -1036,7 +1240,8 @@ export default function InboxPage() {
                       archiveEmail(selectedEmail.id);
                     }
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 border border-violet-500/20 hover:border-violet-500 bg-violet-600/5 hover:bg-violet-600/15 text-xs rounded-lg font-semibold text-violet-300 transition-all cursor-pointer"
+                  disabled={isReadOnly}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-violet-500/20 hover:border-violet-500 bg-violet-600/5 hover:bg-violet-600/15 text-xs rounded-lg font-semibold text-violet-300 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   title="Archive Email to Escalated"
                 >
                   <Save className="w-3.5 h-3.5" />
@@ -1045,7 +1250,7 @@ export default function InboxPage() {
               </div>
 
               <div className="flex gap-2">
-                {latestDraft && !sentReply && !isCustomMode && (
+                {latestDraft && !sentReply && !isCustomMode && !isReadOnly && (
                   <>
                     <button
                       onClick={handleReject}

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Mail, Send, Clock, AlertTriangle, Sliders, Sparkles, ArrowRight, Activity, Edit3, MessageSquare, ShieldCheck,
-  WifiOff, RefreshCw, XCircle, ToggleRight, ToggleLeft, StickyNote, Users, History, ThumbsDown
+  WifiOff, RefreshCw, XCircle, ToggleRight, ToggleLeft, Users, History, ThumbsDown, UserCog
 } from 'lucide-react';
 import Link from 'next/link';
 import {
@@ -18,21 +18,27 @@ export default function DashboardPage() {
   const router = useRouter();
   const {
     dashboardMetrics, dashboardCharts, recentActivity, recentFailedMatches, recentChanges,
-    fetchDashboard, user, isDashboardLoading, isDashboardRefreshing, dashboardError, dashboardUpdatedAt
+    fetchDashboard, user, isDashboardLoading, isDashboardRefreshing, dashboardError, dashboardUpdatedAt,
+    workload, fetchWorkload
   } = useStore();
+
+  const isAdminUser = user?.role === 'Admin';
 
   useEffect(() => {
     fetchDashboard();
+    if (isAdminUser) fetchWorkload();
 
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') {
         fetchDashboard({ silent: true });
+        if (isAdminUser) fetchWorkload();
       }
     }, POLL_INTERVAL_MS);
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         fetchDashboard({ silent: true });
+        if (isAdminUser) fetchWorkload();
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -41,7 +47,7 @@ export default function DashboardPage() {
       clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, []);
+  }, [isAdminUser]);
 
   if (isDashboardLoading || !dashboardMetrics) {
     return (
@@ -150,14 +156,6 @@ export default function DashboardPage() {
       href: '/templates?active=false',
     },
     {
-      title: 'Internal Notes',
-      value: dashboardMetrics.internalNotesCount || 0,
-      icon: StickyNote,
-      color: 'text-cyan-400',
-      bg: 'bg-cyan-500/10 border-cyan-500/20',
-      href: '/notes',
-    },
-    {
       title: 'Customers',
       value: dashboardMetrics.customersCount || 0,
       icon: Users,
@@ -215,6 +213,74 @@ export default function DashboardPage() {
           <p className="text-xs">
             {dashboardError} Showing last synced data — retrying automatically.
           </p>
+        </div>
+      )}
+
+      {/* Admin-only support agent activity view */}
+      {isAdminUser && workload.length > 0 && (
+        <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60">
+          <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 mb-4">
+            <UserCog className="w-4 h-4 text-violet-400" />
+            Support Agent Activity
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {workload.map((w: any) => (
+              <div
+                key={w.userId}
+                className={`p-4 rounded-xl border space-y-2 ${
+                  w.isInactiveWithPending
+                    ? 'border-red-500/40 bg-red-600/10'
+                    : 'border-white/5 bg-white/5'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-white truncate">{w.name}</span>
+                  <span className={`flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                    w.isActive
+                      ? 'text-emerald-400 border-emerald-500/30 bg-emerald-600/10'
+                      : 'text-gray-400 border-white/10 bg-white/5'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${w.isActive ? 'bg-emerald-400' : 'bg-gray-500'}`}></span>
+                    {w.isActive ? 'Active' : 'Offline'}
+                  </span>
+                </div>
+                {w.isInactiveWithPending && (
+                  <p className="text-[10px] text-red-400 font-bold flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> User inactive / emails pending
+                  </p>
+                )}
+                <div className="grid grid-cols-3 gap-2 font-mono text-[10px] pt-1">
+                  <div>
+                    <p className="text-gray-500 uppercase text-[9px]">Open</p>
+                    <p className="text-white font-bold">{w.openCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 uppercase text-[9px]">Replied</p>
+                    <p className="text-white font-bold">{w.respondedCount}</p>
+                  </div>
+                  <div>
+                    <p className={`uppercase text-[9px] ${w.overdueCount > 0 ? 'text-red-400' : 'text-gray-500'}`}>Overdue</p>
+                    <p className={`font-bold ${w.overdueCount > 0 ? 'text-red-400' : 'text-white'}`}>{w.overdueCount}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 uppercase text-[9px]">Assigned</p>
+                    <p className="text-white font-bold">{w.assignedTotal}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 uppercase text-[9px]">Drafts</p>
+                    <p className="text-white font-bold">{w.draftsGenerated}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 uppercase text-[9px]">Left</p>
+                    <p className="text-white font-bold">{w.leftToRespond}</p>
+                  </div>
+                </div>
+                <p className="text-[9px] text-gray-500 pt-1 border-t border-white/5">
+                  Last active: {w.lastSeenAt ? new Date(w.lastSeenAt).toLocaleString() : 'Never'}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

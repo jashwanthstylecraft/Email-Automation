@@ -147,6 +147,8 @@ interface AppState {
   fetchCustomers: (search?: string) => Promise<void>;
   auditLogsFull: any[];
   fetchAuditLogsFull: (filters?: { userId?: string; action?: string; entityType?: string }) => Promise<void>;
+  workload: any[];
+  fetchWorkload: () => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -175,6 +177,7 @@ export const useStore = create<AppState>((set, get) => ({
   editedDrafts: [],
   customers: [],
   auditLogsFull: [],
+  workload: [],
 
   fetchSession: async () => {
     try {
@@ -734,6 +737,18 @@ export const useStore = create<AppState>((set, get) => ({
       const res = await fetch(`/api/logs?${params}`);
       const data = await res.json();
       set({ auditLogsFull: data.logs || [] });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  fetchWorkload: async () => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/users/workload?orgId=${user.organizationId}`);
+      const data = await res.json();
+      set({ workload: data.workload || [] });
     } catch (err: any) {
       set({ error: err.message });
     }
