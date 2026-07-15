@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { syncOrgInbox } from '@/lib/inbox-sync';
 import { getCurrentUser, isAdmin, getClientIp } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { rebalanceOpenEmails } from '@/lib/assignment-service';
 
 export async function GET(request: Request) {
   try {
@@ -89,6 +90,22 @@ export async function POST(request: Request) {
         details: `${user?.email || 'Admin'} purged ${count} spam/promotional email(s) from the inbox`,
       });
       return NextResponse.json({ success: true, deletedCount: count });
+    }
+
+    if (action === 'REBALANCE_ASSIGNMENTS') {
+      const user = await getCurrentUser();
+      if (!isAdmin(user)) {
+        return NextResponse.json({ error: 'Only an admin can rebalance assignments.' }, { status: 403 });
+      }
+      const { reassignedCount, counts } = await rebalanceOpenEmails(orgId, user?.email || null);
+      await logAudit({
+        action: 'ASSIGNMENTS_REBALANCED',
+        user,
+        entityType: 'email',
+        ipAddress: getClientIp(request),
+        details: `${user?.email || 'Admin'} rebalanced ${reassignedCount} open email(s) evenly across support agents: ${JSON.stringify(counts)}`,
+      });
+      return NextResponse.json({ success: true, reassignedCount, counts });
     }
 
     const result = await syncOrgInbox(orgId);
