@@ -105,7 +105,17 @@ const ALL_TEMPLATE_KEYWORDS: Record<string, string[]> = {
   "Receive Fake Email for Partnership": ["fake email partnership", "partnership scam"],
   "Twist & Curl Fits": ["twist & curl fits", "twist and curl"],
   "Difference Between Clippers & Trimmers": ["clippers vs trimmers", "clipper vs trimmer"],
-  "Machine Heating Up - Internal Notes to Ask Customer": ["machine heating up", "heating up machine"]
+  "Machine Heating Up - Internal Notes to Ask Customer": ["machine heating up", "heating up machine"],
+  "Order Status / Tracking Request": ["order status", "where is my order", "track my order", "tracking number", "order update", "not seeing my order", "status of my order"],
+  "Where Is My Refund": ["where is my refund", "refund status", "still waiting for refund", "refund not received", "havent received my refund", "haven't received my refund"],
+  "Wrong Item Received": ["wrong item", "wrong product", "incorrect item", "not what i ordered", "received the wrong"],
+  "Warranty Claim Status Follow-Up": ["claim status", "warranty claim status", "filed a claim", "claim update", "update on my claim"],
+  "Product Recommendation / Which Model Should I Buy": ["which model", "which clipper should", "recommend a clipper", "what should i buy", "best clipper for", "which one should i buy"],
+  "Clipper Maintenance & Oiling": ["how to oil", "oil my clipper", "clean my clipper", "maintain my clipper", "clipper maintenance", "blade maintenance", "how often should i oil"],
+  "Replacement Parts Purchase": ["replacement blade", "replacement parts", "buy a new blade", "spare parts", "purchase parts", "buy replacement"],
+  "Discount Code Not Working": ["discount code not working", "promo code", "coupon code", "code isn't working", "code not working", "code doesnt work"],
+  "General Inquiry Acknowledgment": ["general inquiry", "general question"],
+  "Out of Stock - No Restock Date (Next Drop TBD)": ["next drop tbd", "no restock date", "still out of stock", "everything is out of stock", "when will this be back in stock", "no eta on restock", "out of stock except"]
 };
 
 async function main() {
@@ -157,13 +167,15 @@ async function main() {
       });
 
       const keywords = ALL_TEMPLATE_KEYWORDS[t.name] || [t.name.toLowerCase()];
+      // Each keyword is checked against BOTH the subject and the body, so a
+      // customer who puts the whole question in the subject line still
+      // triggers the right template.
       const conditionsGroup = {
         logic: 'OR',
-        rules: keywords.map(kw => ({
-          field: 'body',
-          operator: 'contains',
-          value: kw
-        }))
+        rules: keywords.flatMap(kw => [
+          { field: 'subject', operator: 'contains', value: kw },
+          { field: 'body', operator: 'contains', value: kw },
+        ])
       };
 
       const action = {
