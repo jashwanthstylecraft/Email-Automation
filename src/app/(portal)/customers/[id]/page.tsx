@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Users, ArrowLeft, Mail, XCircle, StickyNote, RefreshCw } from 'lucide-react';
+import { BentoSection, BentoCard } from '@/components/MagicBento';
 
 export default function CustomerDetailPage() {
   const params = useParams();
@@ -50,19 +51,19 @@ export default function CustomerDetailPage() {
         <p className="text-gray-400 text-xs mt-1">Customer profile & full thread history.</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <BentoSection className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           { label: 'Total Emails', value: customer.totalEmails },
           { label: 'Total Replies Sent', value: customer.totalReplies },
           { label: 'Failed Matches', value: failedMatches.length },
           { label: 'Last Contacted', value: customer.lastEmailAt ? new Date(customer.lastEmailAt).toLocaleDateString() : 'Never' },
         ].map(stat => (
-          <div key={stat.label} className="glass-panel p-4 rounded-xl border border-white/5 bg-[#0b0b0f]/60">
+          <BentoCard key={stat.label} className="glass-panel p-4 rounded-xl border border-white/5 bg-[#0b0b0f]/60">
             <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider">{stat.label}</p>
             <h3 className="text-xl font-bold text-white mt-2">{stat.value}</h3>
-          </div>
+          </BentoCard>
         ))}
-      </div>
+      </BentoSection>
 
       <div className="glass-panel rounded-xl border border-white/5 bg-[#0b0b0f]/60 p-6">
         <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2 mb-4">

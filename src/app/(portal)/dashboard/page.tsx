@@ -11,6 +11,7 @@ import Link from 'next/link';
 import {
   EmailsPerDayChart, CategoriesChart, SentimentChart
 } from '@/components/dashboard-charts';
+import { BentoSection, BentoCard, DEFAULT_GLOW_COLOR } from '@/components/MagicBento';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -223,10 +224,11 @@ export default function DashboardPage() {
             <UserCog className="w-4 h-4 text-violet-400" />
             Support Agent Activity
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <BentoSection className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {workload.map((w: any) => (
-              <div
+              <BentoCard
                 key={w.userId}
+                glowColor={w.isInactiveWithPending ? '239, 68, 68' : DEFAULT_GLOW_COLOR}
                 className={`p-4 rounded-xl border space-y-2 ${
                   w.isInactiveWithPending
                     ? 'border-red-500/40 bg-red-600/10'
@@ -278,19 +280,23 @@ export default function DashboardPage() {
                 <p className="text-[9px] text-gray-500 pt-1 border-t border-white/5">
                   Last active: {w.lastSeenAt ? new Date(w.lastSeenAt).toLocaleString() : 'Never'}
                 </p>
-              </div>
+              </BentoCard>
             ))}
-          </div>
+          </BentoSection>
         </div>
       )}
 
       {/* Primary KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      <BentoSection className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         {kpis.map((kpi) => {
           const Icon = kpi.icon;
-          const CardTag: any = kpi.href ? Link : 'div';
           return (
-            <CardTag key={kpi.title} {...(kpi.href ? { href: kpi.href } : {})} className={`glass-panel p-4 rounded-xl border border-white/5 relative overflow-hidden flex flex-col justify-between bg-[#0b0b0f]/60 ${kpi.href ? 'hover:border-violet-500/30 transition-colors cursor-pointer' : ''}`}>
+            <BentoCard
+              key={kpi.title}
+              as={kpi.href ? Link : 'div'}
+              href={kpi.href}
+              className={`glass-panel p-4 rounded-xl border border-white/5 flex flex-col justify-between bg-[#0b0b0f]/60 ${kpi.href ? 'hover:border-violet-500/30 transition-colors cursor-pointer' : ''}`}
+            >
               <div className="flex justify-between items-start">
                 <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider leading-relaxed">{kpi.title}</p>
                 <div className={`p-1.5 rounded-lg border ${kpi.bg}`}>
@@ -300,17 +306,17 @@ export default function DashboardPage() {
               <div className="mt-3">
                 <h3 className="text-xl font-bold tracking-tight text-white">{kpi.value}</h3>
               </div>
-            </CardTag>
+            </BentoCard>
           );
         })}
-      </div>
+      </BentoSection>
 
       {/* Sub-Metrics & Trends */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <BentoSection className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {subMetrics.map((sm) => {
           const Icon = sm.icon;
           return (
-            <Link key={sm.name} href={sm.href} className="glass-panel p-4 rounded-xl border border-white/5 hover:border-violet-500/30 transition-colors flex items-center justify-between bg-[#0b0b0f]/60">
+            <BentoCard key={sm.name} as={Link} href={sm.href} className="glass-panel p-4 rounded-xl border border-white/5 hover:border-violet-500/30 transition-colors flex items-center justify-between bg-[#0b0b0f]/60">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-white/5 rounded-lg">
                   <Icon className="w-4 h-4 text-violet-400" />
@@ -320,10 +326,10 @@ export default function DashboardPage() {
                   <p className="text-xs font-semibold text-white mt-0.5">{sm.value}</p>
                 </div>
               </div>
-            </Link>
+            </BentoCard>
           );
         })}
-      </div>
+      </BentoSection>
 
       {isDataEmpty ? (
         <div className="glass-panel py-20 px-6 text-center border border-white/5 rounded-2xl flex flex-col items-center justify-center bg-[#0b0b0f]/60">

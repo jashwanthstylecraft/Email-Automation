@@ -9,6 +9,7 @@ import {
   Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
+import { BentoSection, BentoCard } from '@/components/MagicBento';
 
 export default function InboxPage() {
   const {
@@ -523,11 +524,13 @@ export default function InboxPage() {
             <>
               {/* Support agent lanes: admins see all three, agents see only their own row */}
               {workload.length > 0 && (
-                <div className="p-2 space-y-1.5 border-b border-white/5">
+                <BentoSection className="p-2 space-y-1.5 border-b border-white/5">
                   <p className="text-[9px] text-gray-500 uppercase font-semibold px-1 pb-1">Support Lanes</p>
                   {workload.map((w: any) => (
-                    <div
+                    <BentoCard
                       key={w.userId}
+                      glowColor={w.isInactiveWithPending ? '239, 68, 68' : undefined}
+                      particleCount={4}
                       className={`p-2.5 rounded-lg border ${w.isInactiveWithPending ? 'border-red-500/40 bg-red-600/10' : 'border-white/5 bg-white/5'}`}
                     >
                       <div className="flex justify-between items-center gap-1">
@@ -543,9 +546,9 @@ export default function InboxPage() {
                       {w.isInactiveWithPending && (
                         <p className="text-[9px] text-red-400 font-bold mt-1">⚠ Inactive / pending</p>
                       )}
-                    </div>
+                    </BentoCard>
                   ))}
-                </div>
+                </BentoSection>
               )}
 
               {/* Category classification */}

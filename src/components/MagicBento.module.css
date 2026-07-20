@@ -1,0 +1,60 @@
+.bentoSection {
+  position: relative;
+  user-select: none;
+}
+
+.bentoCard {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+
+  --glow-x: 50%;
+  --glow-y: 50%;
+  --glow-intensity: 0;
+  --glow-radius: 200px;
+}
+
+.bentoCard.borderGlow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  background: radial-gradient(
+    var(--glow-radius) circle at var(--glow-x) var(--glow-y),
+    rgba(var(--glow-color, 132, 0, 255), calc(var(--glow-intensity) * 0.8)) 0%,
+    rgba(var(--glow-color, 132, 0, 255), calc(var(--glow-intensity) * 0.4)) 30%,
+    transparent 60%
+  );
+  border-radius: inherit;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bentoCard.borderGlow:hover {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 30px rgba(var(--glow-color, 132, 0, 255), 0.15);
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.globalSpotlight {
+  position: fixed;
+  width: 800px;
+  height: 800px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 200;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: screen;
+}
