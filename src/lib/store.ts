@@ -103,6 +103,7 @@ interface AppState {
   dashboardError: string | null;
   isLoading: boolean;
   error: string | null;
+  lastEmailFilters: any;
 
   fetchSession: () => Promise<void>;
   logout: () => Promise<void>;
@@ -171,6 +172,7 @@ export const useStore = create<AppState>((set, get) => ({
   dashboardError: null,
   isLoading: false,
   error: null,
+  lastEmailFilters: null,
   auditLogs: [],
   notes: [],
   failedMatches: [],
@@ -234,18 +236,22 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  fetchEmails: async (filters = {}) => {
+  fetchEmails: async (filters) => {
     const user = get().user;
     if (!user) return;
-    set({ isLoading: true });
+    // No-arg refreshes (after approve/archive/etc.) reuse the last explicit
+    // filters so the list stays on the tab the user is looking at. The
+    // default view is INBOX: only active/upcoming mail that needs action.
+    const effective = filters ?? get().lastEmailFilters ?? {};
+    set({ isLoading: true, lastEmailFilters: effective });
     try {
       const params = new URLSearchParams({
         orgId: user.organizationId,
-        status: filters.status || 'ALL',
-        priority: filters.priority || 'ALL',
-        sentiment: filters.sentiment || 'ALL',
-        category: filters.category || 'ALL',
-        search: filters.search || '',
+        status: effective.status || 'INBOX',
+        priority: effective.priority || 'ALL',
+        sentiment: effective.sentiment || 'ALL',
+        category: effective.category || 'ALL',
+        search: effective.search || '',
       });
       const res = await fetch(`/api/inbox?${params}`);
       const data = await res.json();

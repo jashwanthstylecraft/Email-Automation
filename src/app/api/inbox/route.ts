@@ -28,11 +28,19 @@ export async function GET(request: Request) {
     // The "status" param doubles as the mailbox tab selector. Most values
     // map straight to the Email.status column, but a few are pseudo-views
     // that need a different filter entirely.
-    if (status === 'PRIMARY') {
+    if (status === 'INBOX' || !status) {
+      // The inbox proper: only mail that still needs action. Replied
+      // (handled) and escalated/archived mail lives in its own tabs.
+      where.status = { in: ['UNREAD', 'WAITING'] };
+    } else if (status === 'PRIMARY') {
       where.gmailCategory = 'primary';
+      where.status = { not: 'ESCALATED' };
     } else if (status === 'DRAFTS') {
       where.autoReplies = { some: { status: 'DRAFT' } };
-    } else if (status && status !== 'ALL') {
+    } else if (status === 'ALL') {
+      // "All" is every conversation except the Deleted/Archived tab's.
+      where.status = { not: 'ESCALATED' };
+    } else {
       where.status = status;
     }
     if (priority && priority !== 'ALL') {

@@ -21,7 +21,7 @@ export default function InboxPage() {
 
   const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState(searchParams.get('status') || 'ALL');
+  const [activeFilter, setActiveFilter] = useState(searchParams.get('status') || 'INBOX');
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [replyText, setReplyText] = useState('');
   const [isEditingDraft, setIsEditingDraft] = useState(false);
@@ -361,8 +361,11 @@ export default function InboxPage() {
 
   // Spam and Updates (promotional/social) are deliberately excluded --
   // the sync pipeline never stores them, so there's no tab for them here.
+  // "Inbox" (the default) shows only active/upcoming mail that still needs
+  // action; handled and archived mail lives in the Sent / Deleted tabs.
   const filterTabs = [
-    { label: 'All', value: 'ALL', icon: InboxIcon },
+    { label: 'Inbox', value: 'INBOX', icon: InboxIcon },
+    { label: 'All', value: 'ALL', icon: Mail },
     { label: 'Primary', value: 'PRIMARY', icon: CircleDot },
     { label: 'Drafts', value: 'DRAFTS', icon: FileEdit },
     { label: 'Sent', value: 'REPLIED', icon: CheckCheck },
