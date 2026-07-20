@@ -1,0 +1,112 @@
+.pillNav {
+  --nav-h: 40px;
+  --pill-gap: 6px;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pillList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pill-gap);
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.pillList > li {
+  display: flex;
+  width: 100%;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: var(--nav-h);
+  padding: 0 14px;
+  background: var(--pill-bg, transparent);
+  color: var(--pill-text, #9ca3af);
+  text-decoration: none;
+  border-radius: 9999px;
+  box-sizing: border-box;
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--base, #7c3aed);
+  outline-offset: 2px;
+}
+
+.pill.isActive {
+  background: var(--base, #7c3aed);
+}
+
+.pill.isActive .pillContent {
+  color: var(--hover-text, #fff);
+}
+
+.hoverCircle {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  border-radius: 50%;
+  background: var(--base, #7c3aed);
+  z-index: 1;
+  display: block;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.labelStack {
+  position: relative;
+  display: block;
+  width: 100%;
+  line-height: 1;
+  z-index: 2;
+}
+
+.pillContent {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 2;
+  color: var(--pill-text, #9ca3af);
+  will-change: transform;
+}
+
+.pillContentHover {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  color: var(--hover-text, #fff);
+  z-index: 3;
+  will-change: transform, opacity;
+}
+
+.pillIcon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.pillLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -8,7 +8,7 @@ import {
   LayoutGrid, Mail, Sliders, FileText, Settings as SettingsIcon,
   Terminal, LogOut, RefreshCw, Wand2, Activity, StickyNote, History
 } from 'lucide-react';
-import Link from 'next/link';
+import PillNav from '@/components/PillNav';
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -93,25 +93,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex-1 overflow-y-auto p-2.5 space-y-1 min-h-0">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.path.split('?')[0];
-            return (
-              <Link
-                key={item.path}
-                href={item.path}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs transition-all ${
-                  isActive
-                    ? 'bg-violet-600/10 border border-violet-500/20 text-white font-medium shadow-inner'
-                    : 'text-gray-400 hover:text-white hover:bg-white/5 border border-transparent'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-violet-500' : 'text-gray-400'}`} />
-                <span className="truncate">{item.name}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto p-2.5 min-h-0">
+          <PillNav
+            items={navItems.map(({ name, path, icon }) => ({ label: name, href: path, icon }))}
+            activeHref={pathname}
+            baseColor="#7c3aed"
+            pillColor="transparent"
+            hoveredPillTextColor="#ffffff"
+            pillTextColor="#9ca3af"
+          />
         </nav>
 
         {/* User profile / Logout */}
