@@ -198,7 +198,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             });
           }
 
-          // 4b. Round-robin assign to whichever active support agent has the fewest open emails right now.
+          // 4b. Round-robin assign to whichever support agent has the fewest open emails right now.
           await assignEmailRoundRobin(inbox.organizationId, processedEmail.id);
 
           // 5. Create structured audit log record

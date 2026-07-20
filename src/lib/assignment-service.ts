@@ -1,18 +1,18 @@
 import { prisma } from './prisma';
-import { isRecentlyActive } from './auth';
 
 const OPEN_STATUSES = ['UNREAD', 'WAITING'];
 
 /**
- * Assigns one email to whichever currently-active Support Agent has the
- * fewest open (unresolved) emails right now. Ties are broken by a stable
- * Support 1 -> Support 2 -> Support 3 order. Counts are re-read from the
- * database on every call (not cached in memory), so calling this once per
- * email in a loop naturally balances a whole batch correctly -- each
+ * Assigns one email to whichever Support Agent has the fewest open
+ * (unresolved) emails right now, regardless of whether they're currently
+ * logged in -- new mail must never sit unassigned just because nobody
+ * happens to have the portal open at that moment. Ties are broken by a
+ * stable Support 1 -> Support 2 -> Support 3 order. Counts are re-read from
+ * the database on every call (not cached in memory), so calling this once
+ * per email in a loop naturally balances a whole batch correctly -- each
  * assignment is immediately visible to the next call's count query.
  *
- * Returns null if no support agent is currently active (assignment is
- * skipped rather than forced onto someone who isn't at their desk).
+ * Returns null only if the organization has no Support Agent at all.
  */
 export async function assignEmailRoundRobin(organizationId: string, emailId: string) {
   const agents = await prisma.user.findMany({
@@ -20,11 +20,10 @@ export async function assignEmailRoundRobin(organizationId: string, emailId: str
     orderBy: { createdAt: 'asc' },
   });
 
-  const activeAgents = agents.filter(a => isRecentlyActive(a.lastSeenAt));
-  if (activeAgents.length === 0) return null;
+  if (agents.length === 0) return null;
 
   const withCounts = await Promise.all(
-    activeAgents.map(async (agent, index) => ({
+    agents.map(async (agent, index) => ({
       agent,
       index, // stable tie-break order (Support 1 -> 2 -> 3, by createdAt)
       openCount: await prisma.email.count({
@@ -55,12 +54,12 @@ export async function assignEmailRoundRobin(organizationId: string, emailId: str
 }
 
 /**
- * One-time corrective pass: redistributes every currently-open (not yet
- * replied) email evenly across ALL Support Agents in the org, ignoring the
- * active-in-last-10-minutes filter (unlike assignEmailRoundRobin, which is
- * for live routing of brand-new mail). Use this to fix a backlog that got
- * skewed toward one agent -- e.g. by a bug that assigned emails to whoever
- * happened to open them instead of balancing fairly.
+ * Bulk corrective pass: redistributes every currently-open (not yet
+ * replied) email evenly across ALL Support Agents in the org from scratch,
+ * recomputing every assignment rather than routing one new email at a time
+ * (unlike assignEmailRoundRobin, which is for live routing as mail arrives).
+ * Use this to fix a backlog that got skewed toward one agent, or after
+ * adding/removing a Support Agent.
  */
 export async function rebalanceOpenEmails(organizationId: string, actorEmail: string | null) {
   const agents = await prisma.user.findMany({
