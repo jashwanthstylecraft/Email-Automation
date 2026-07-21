@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
 import { extractKeywordsForTemplate, parseKeywords, serializeKeywords } from '@/lib/keyword-engine';
+import { openai, OPENAI_MODEL, OPENAI_TEMPERATURE } from '@/lib/openai-client';
 
 // Exact keywords to map rules to templates for the 102 StyleCraft templates
 const ALL_TEMPLATE_KEYWORDS: Record<string, string[]> = {
@@ -114,22 +115,18 @@ const ALL_TEMPLATE_KEYWORDS: Record<string, string[]> = {
 };
 
 /**
- * Uses Gemini or OpenAI to discover every template heading line in an
- * arbitrary reference document, in order -- this is what lets a brand-new
+ * Uses the shared OpenAI client to discover every template heading line in
+ * an arbitrary reference document, in order -- this is what lets a brand-new
  * document introduce brand-new template categories that ALL_TEMPLATE_KEYWORDS
- * has never heard of, instead of only ever re-syncing the ~112 names already
+ * has never heard of, instead of only ever re-syncing the names already
  * known. The model is only ever asked to locate and copy heading lines
  * verbatim, never to write or paraphrase reply content -- every template's
  * actual body text still comes from slicing the raw document text between
  * these headings, exactly as before, so there is no hallucination risk on
  * the parts an agent or customer will actually read.
  */
-async function discoverTemplateHeadings(
-  documentText: string,
-  geminiKey?: string,
-  openaiKey?: string
-): Promise<string[] | null> {
-  if (!geminiKey && !openaiKey) return null;
+async function discoverTemplateHeadings(documentText: string): Promise<string[] | null> {
+  if (!process.env.OPENAI_API_KEY) return null;
 
   const prompt = `
 The document below contains a series of canned customer-support reply templates. Each template consists of a short heading line (its title/category), followed by that template's reply body text (one or more paragraphs).
@@ -147,38 +144,22 @@ Return ONLY a JSON object of the shape {"headings": ["...", "...", ...]}, with n
 `;
 
   try {
-    let responseText = '';
-    if (geminiKey) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
-      });
-      if (!response.ok) throw new Error(`Gemini API returned status ${response.status}`);
-      const data = await response.json();
-      responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else if (openaiKey) {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openaiKey}` },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: 'You are a JSON generator.' },
-            { role: 'user', content: prompt },
-          ],
-          response_format: { type: 'json_object' },
-        }),
-      });
-      if (!response.ok) throw new Error(`OpenAI API returned status ${response.status}`);
-      const data = await response.json();
-      responseText = data.choices?.[0]?.message?.content || '';
-    }
+    const completion = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      // This call enumerates every heading in a whole reference document
+      // (can be 100+ short strings), not a single short reply, so it needs
+      // a much larger budget than the app's normal per-email cap -- still
+      // the one shared client/model, just a call-specific token ceiling.
+      max_tokens: 2000,
+      temperature: OPENAI_TEMPERATURE,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: 'You are a JSON generator.' },
+        { role: 'user', content: prompt },
+      ],
+    });
 
+    const responseText = completion.choices[0]?.message?.content || '';
     const jsonStr = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
     const parsed = JSON.parse(jsonStr);
     const headings = Array.isArray(parsed.headings) ? parsed.headings.filter((h: any) => typeof h === 'string' && h.trim()) : null;
@@ -229,11 +210,7 @@ export async function POST(request: Request) {
     // existing templates but can never discover a new one. The model only
     // ever locates/copies heading lines verbatim; body text always comes
     // from slicing the raw document below, never from the AI.
-    const settings = await prisma.settings.findUnique({ where: { organizationId } });
-    const geminiKey = settings?.geminiApiKey || process.env.GEMINI_API_KEY;
-    const openaiKey = settings?.openaiApiKey || process.env.OPENAI_API_KEY;
-
-    const discoveredHeadings = await discoverTemplateHeadings(extractedText, geminiKey, openaiKey);
+    const discoveredHeadings = await discoverTemplateHeadings(extractedText);
     const requestedTemplateTitles = discoveredHeadings || Object.keys(ALL_TEMPLATE_KEYWORDS);
 
     const lines = extractedText.split(/\r?\n/);

@@ -33,6 +33,7 @@ model Organization {
   integrations Integration[]
   customers    Customer[]
   internalNotes InternalNote[]
+  aiReplyCaches AIReplyCache[]
   settings     Settings?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -64,8 +65,19 @@ model Settings {
   closing        String       @default("Regards,\nSupport Team")
   autoReplyMode  String       @default("DRAFT") // AUTO (Fully Automatic), DRAFT (AI Draft -> Human Approval), MANUAL (Manual Only)
   confidenceThreshold Float @default(0.8)
-  geminiApiKey   String?
-  openaiApiKey   String?
+}
+
+// Caches an AI-generated reply by a hash of (subject + first-100-words-of-body)
+// so the exact same email content is never sent to OpenAI twice.
+model AIReplyCache {
+  id             String       @id @default(uuid())
+  organizationId String
+  contentHash    String
+  replyText      String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, contentHash])
 }
 
 model Inbox {
@@ -104,7 +116,7 @@ model Email {
   urgency         String       @default("MEDIUM") // LOW, MEDIUM, HIGH
   summary         String?      // AI-generated brief summary
   matchedTemplateId String?    // AI-matched template ID
-  aiProvider      String?      // Gemini or OpenAI
+  aiProvider      String?      // "Keyword Matcher" (template match, no API call) or "OpenAI (<model>)" / "OpenAI (cached)"
   userFeedback    String?      // Correct Template, Wrong Template, Better Template Exists, etc.
   userFeedbackNotes String?    // user notes / added keywords
   assignedUserId  String?

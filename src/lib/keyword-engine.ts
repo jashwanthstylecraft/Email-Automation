@@ -102,9 +102,8 @@ function meaningfulWords(phrase: string): string[] {
 /**
  * Deterministic, non-AI keyword extraction from a template's own title and
  * body. Used to bootstrap every template with real keywords immediately
- * (Gemini's free-tier quota is too small to do this for 100+ templates
- * on demand), and as a fallback whenever the LLM-based enrichment hasn't
- * reached a given template yet.
+ * without spending any API quota on 100+ templates at once, and as a
+ * fallback whenever LLM-based enrichment hasn't reached a given template yet.
  */
 export function extractKeywordsForTemplate(name: string, body: string): StructuredKeywords {
   const title = cleanTitle(name);

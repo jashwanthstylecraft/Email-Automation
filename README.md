@@ -22,7 +22,7 @@ Intelligent SaaS platform that monitors an organization's support mailbox, runs 
 * **Database**: PostgreSQL, Prisma ORM (Driver Adapters)
 * **State Management**: Zustand
 * **Charts**: Recharts
-* **AI Engine**: Google Gemini API, OpenAI GPT, or self-contained **Mock Local AI Fallback** for offline testing.
+* **AI Engine**: OpenAI (`gpt-3.5-turbo`) via the official SDK, used only when no template matches an incoming email; template matching itself is a free local keyword engine.
 
 ---
 
@@ -60,14 +60,15 @@ Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 
-## API Configuration (Gemini / OpenAI)
+## API Configuration (OpenAI)
 
-To activate live LLM classifications and generation rather than the mock local engine, fill in your API credentials in `.env`:
+Template matching (the common case) never calls an LLM. To activate AI-generated replies for the remaining case -- an incoming email that matches no existing template -- set your API key in `.env`:
 
 ```ini
-GEMINI_API_KEY="your-gemini-key"
-OPENAI_API_KEY="your-openai-key"
+OPENAI_API_KEY=your_openai_api_key_here
 ```
+
+If left blank, unmatched emails fall back to a generic "a representative will follow up" response instead of an AI-drafted one; template-matched replies are unaffected either way.
 
 ---
 
@@ -78,6 +79,6 @@ Vercel's serverless runtime has an ephemeral filesystem and no always-on process
 1. **Create a free Postgres database** at [neon.tech](https://neon.tech) (or Supabase) and copy its connection string.
 2. **Push the schema**: locally, set `DATABASE_URL` to that connection string in `.env`, then run `npx prisma db push` and `npx tsx prisma/seed.ts` once to create tables and seed demo data.
 3. **Import this repo into Vercel** (vercel.com → Add New → Project → import from GitHub).
-4. **Set environment variables** in the Vercel project settings: `DATABASE_URL`, `GEMINI_API_KEY`/`OPENAI_API_KEY` (optional), `IMAP_*`/`SMTP_*` (optional, for live email), and `CRON_SECRET` (any random string — protects the cron endpoint).
+4. **Set environment variables** in the Vercel project settings: `DATABASE_URL`, `OPENAI_API_KEY` (optional), `IMAP_*`/`SMTP_*` (optional, for live email), and `CRON_SECRET` (any random string — protects the cron endpoint).
 5. **Deploy.** Vercel will run `npm run build`, which generates the Prisma client automatically.
 6. The built-in `vercel.json` cron runs once a day on the free Hobby plan. For more frequent syncing on the free tier, point an external scheduler (e.g. [cron-job.org](https://cron-job.org), free) at `https://<your-app>.vercel.app/api/cron/sync` with header `Authorization: Bearer <CRON_SECRET>` every few minutes — or just use the "Sync Inbox" button in the UI.

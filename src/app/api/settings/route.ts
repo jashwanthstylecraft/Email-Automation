@@ -38,9 +38,9 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { 
-      organizationId, systemPrompt, tone, greeting, closing, 
-      autoReplyMode, confidenceThreshold, geminiApiKey, openaiApiKey 
+    const {
+      organizationId, systemPrompt, tone, greeting, closing,
+      autoReplyMode, confidenceThreshold
     } = body;
 
     if (!organizationId) {
@@ -56,8 +56,6 @@ export async function PUT(request: Request) {
         closing,
         autoReplyMode,
         confidenceThreshold: parseFloat(confidenceThreshold),
-        geminiApiKey,
-        openaiApiKey,
       },
       create: {
         organizationId,
@@ -67,8 +65,6 @@ export async function PUT(request: Request) {
         closing,
         autoReplyMode,
         confidenceThreshold: parseFloat(confidenceThreshold),
-        geminiApiKey,
-        openaiApiKey,
       },
     });
 

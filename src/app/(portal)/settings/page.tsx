@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
-import { 
-  Settings as SettingsIcon, Save, Layers, ShieldAlert, CheckCircle, 
-  Mail, Users, Plus, ShieldCheck, Key, HelpCircle, Info
+import {
+  Settings as SettingsIcon, Save, Layers, ShieldAlert, CheckCircle,
+  Mail, Users, Plus, ShieldCheck, HelpCircle
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -21,11 +21,6 @@ export default function SettingsPage() {
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.8);
   const [isSaved, setIsSaved] = useState(false);
 
-  // API Key simulation states
-  const [geminiKey, setGeminiKey] = useState('');
-  const [openaiKey, setOpenaiKey] = useState('');
-  const [showKeys, setShowKeys] = useState(false);
-
   useEffect(() => {
     fetchSettings();
     fetchIntegrations();
@@ -39,8 +34,6 @@ export default function SettingsPage() {
       setClosing(settings.closing);
       setAutoReplyMode(settings.autoReplyMode);
       setConfidenceThreshold(settings.confidenceThreshold);
-      setGeminiKey(settings.geminiApiKey || '');
-      setOpenaiKey(settings.openaiApiKey || '');
     }
   }, [settings]);
 
@@ -53,8 +46,6 @@ export default function SettingsPage() {
       closing,
       autoReplyMode: autoReplyMode as any,
       confidenceThreshold: parseFloat(confidenceThreshold.toString()),
-      geminiApiKey: geminiKey,
-      openaiApiKey: openaiKey,
     });
 
     setIsSaved(true);
@@ -152,51 +143,6 @@ export default function SettingsPage() {
                 rows={3}
                 className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-violet-500 font-mono"
               />
-            </div>
-          </div>
-
-          {/* AI Credentials Panel */}
-          <div className="glass-panel p-6 rounded-xl border border-white/5 space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Key className="w-4 h-4 text-violet-400" />
-                AI Provider Integration (Credentials)
-              </h3>
-              <button 
-                type="button" 
-                onClick={() => setShowKeys(!showKeys)}
-                className="text-[10px] text-violet-400 hover:text-violet-300 font-semibold cursor-pointer"
-              >
-                {showKeys ? 'Hide Keys' : 'Show Credentials'}
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Gemini API Key</label>
-                <input
-                  type={showKeys ? 'text' : 'password'}
-                  placeholder="AIzaSy..."
-                  value={geminiKey}
-                  onChange={(e) => setGeminiKey(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">OpenAI API Key</label>
-                <input
-                  type={showKeys ? 'text' : 'password'}
-                  placeholder="sk-proj-..."
-                  value={openaiKey}
-                  onChange={(e) => setOpenaiKey(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500 font-mono"
-                />
-              </div>
-              <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                <Info className="w-3.5 h-3.5 text-gray-600" />
-                If credentials are left blank, the system automatically runs in **Mock local AI pipeline mode** to process requests out-of-the-box.
-              </p>
             </div>
           </div>
         </div>

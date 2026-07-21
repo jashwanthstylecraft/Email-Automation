@@ -42,8 +42,6 @@ export interface Settings {
   closing: string;
   autoReplyMode: 'AUTO' | 'DRAFT' | 'MANUAL';
   confidenceThreshold: number;
-  geminiApiKey?: string;
-  openaiApiKey?: string;
 }
 
 export interface Rule {

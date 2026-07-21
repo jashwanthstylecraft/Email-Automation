@@ -1,8 +1,7 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { prisma } from './prisma';
-import { runAIPipeline } from './ai-pipeline';
-import { processAutomationRules } from './rules-engine';
+import { runAIPipelineBatch } from './ai-pipeline';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
 import { assignEmailRoundRobin } from './assignment-service';
 
@@ -49,9 +48,15 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
   try {
     // Search for unseen messages
     const unseenList = await client.search({ seen: false });
-    
+
     if (unseenList && Array.isArray(unseenList)) {
       console.log(`Found ${unseenList.length} unseen messages on the IMAP server.`);
+
+      // Pass 1: fetch/parse/filter every unseen message and create its Email
+      // row (unchanged from before), but don't classify yet -- collect them
+      // so every email that needs a fresh AI reply (no template match) can
+      // be sent to OpenAI in ONE batched call instead of one call each.
+      const pending: { seq: number; newEmail: Awaited<ReturnType<typeof prisma.email.create>>; senderEmail: string; senderName: string | null; subject: string }[] = [];
 
       for (const seq of unseenList) {
         const message = await client.fetchOne(seq, { source: true, uid: true });
@@ -116,7 +121,6 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         });
 
         if (!exists) {
-          // 1. Create the Email record
           const newEmail = await prisma.email.create({
             data: {
               sender: senderEmail,
@@ -130,9 +134,29 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             },
           });
 
-          // 2. Process with AI Pipeline
-          console.log(`Running AI classifications for live email ID ${newEmail.id}...`);
-          const aiResult = await runAIPipeline(newEmail.body, newEmail.subject, newEmail.sender, inbox.organizationId, senderName);
+          pending.push({ seq, newEmail, senderEmail, senderName, subject });
+        }
+      }
+
+      // Pass 2: classify + template-match every pending email (all free),
+      // batching whichever ones matched no template into a single OpenAI call.
+      if (pending.length > 0) {
+        console.log(`Running AI classification for ${pending.length} live email(s)...`);
+        const aiResults = await runAIPipelineBatch(
+          pending.map(p => ({
+            body: p.newEmail.body,
+            subject: p.newEmail.subject,
+            sender: p.newEmail.sender,
+            organizationId: inbox.organizationId,
+            parsedSenderName: p.senderName,
+          }))
+        );
+
+        // Pass 3: same per-email side effects as before, using each email's
+        // corresponding (already-computed) aiResult.
+        for (let i = 0; i < pending.length; i++) {
+          const { seq, newEmail, senderEmail, senderName, subject } = pending[i];
+          const aiResult = aiResults[i];
 
           // Spam is never surfaced in the inbox -- discard it outright.
           if (aiResult.spam) {
@@ -153,14 +177,14 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             ? (templates.find(t => t.id === aiResult.matchedTemplateId)?.name || 'None')
             : 'None';
 
-          // 2b. Group this email under the sender's customer profile.
+          // Group this email under the sender's customer profile.
           await upsertCustomerForEmail(inbox.organizationId, senderEmail, newEmail.id, senderName);
 
-          // 2c. Duplicate-send prevention: same template already sent to
-          // this sender within the last 24h -> force manual review.
+          // Duplicate-send prevention: same template already sent to this
+          // sender within the last 24h -> force manual review.
           const isRecentDuplicate = await checkRecentDuplicateReply(inbox.organizationId, senderEmail, aiResult.matchedTemplateId ?? null);
 
-          // 3. Update Email details in DB with new logging/matching fields
+          // Update Email details in DB with new logging/matching fields.
           // If confidence is >= 85%, status is UNREAD. Otherwise WAITING (Manual Review Queue)
           const finalStatus = isRecentDuplicate
             ? 'WAITING'
@@ -186,7 +210,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             },
           });
 
-          // 4. Save generated AI reply draft
+          // Save generated reply draft
           const hasDraft = !!aiResult.draftReply;
           if (hasDraft) {
             await prisma.autoReply.create({
@@ -199,10 +223,10 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             });
           }
 
-          // 4b. Round-robin assign to whichever support agent has the fewest open emails right now.
+          // Round-robin assign to whichever support agent has the fewest open emails right now.
           await assignEmailRoundRobin(inbox.organizationId, processedEmail.id);
 
-          // 5. Create structured audit log record
+          // Create structured audit log record
           const isManualReview = aiResult.aiConfidence < 0.85;
           await prisma.auditLog.create({
             data: {

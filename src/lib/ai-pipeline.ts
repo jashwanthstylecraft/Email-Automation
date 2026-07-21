@@ -1,6 +1,7 @@
+import crypto from 'crypto';
 import { prisma } from './prisma';
 import { parseKeywords, matchTemplates, TemplateForScoring, MatchResult } from './keyword-engine';
-import { getThreadContext } from './customer-service';
+import { openai, OPENAI_MODEL, OPENAI_MAX_TOKENS, OPENAI_TEMPERATURE } from './openai-client';
 
 export interface AIPipelineResult {
   language: string;
@@ -18,6 +19,12 @@ export interface AIPipelineResult {
 }
 
 const FALLBACK_RESPONSE = "Thank you for contacting StyleCraft Support. We have received your email, but we require more information or our team needs to review your request manually. A representative will follow up with you shortly.";
+
+// Kept short and reply-focused on purpose -- classification (language,
+// category, sentiment, urgency, priority) is handled by free local
+// heuristics below, never by the API, so this prompt only has to do one
+// job: draft a brief reply when nothing in the template library matches.
+const ANALYSIS_SYSTEM_PROMPT = "You are an email assistant. Analyse the subject and brief content. Match to existing templates or suggest a short reply. Be concise. Max 3 sentences.";
 
 /**
  * Checks if this email is a duplicate of a recent email from the same sender.
@@ -50,10 +57,9 @@ export function resolveCustomerName(senderEmail: string, parsedName?: string | n
 
 /**
  * Best-effort deterministic extraction of an order number the customer
- * mentioned in their own email -- used as the no-AI-key fallback and as a
- * last-resort safety net even when AI is configured. Matches StyleCraft's
- * own order ID formats (e.g. "S000097815", "G000062862") as well as generic
- * "order # 12345" / "order number: ABC123" phrasing.
+ * mentioned in their own email. Matches StyleCraft's own order ID formats
+ * (e.g. "S000097815", "G000062862") as well as generic "order # 12345" /
+ * "order number: ABC123" phrasing.
  */
 export function extractOrderNumberFromText(text: string): string | null {
   const idMatch = text.match(/\b[SG]0*\d{5,}\b/);
@@ -63,9 +69,41 @@ export function extractOrderNumberFromText(text: string): string | null {
   return null;
 }
 
+/**
+ * First 100 words of a body -- the only content sent to OpenAI, per email,
+ * to keep token usage (and cost) minimal.
+ */
+export function first100Words(text: string): string {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  return words.slice(0, 100).join(' ');
+}
+
+/**
+ * Stable content fingerprint (subject + brief body) used as the cache key
+ * so the same email is never sent to OpenAI twice.
+ */
+export function hashEmailContent(subject: string, briefBody: string): string {
+  return crypto.createHash('sha256').update(`${subject.trim().toLowerCase()}|${briefBody.trim().toLowerCase()}`).digest('hex');
+}
+
+async function getCachedReply(organizationId: string, contentHash: string): Promise<string | null> {
+  const cached = await prisma.aIReplyCache.findUnique({
+    where: { organizationId_contentHash: { organizationId, contentHash } },
+  });
+  return cached?.replyText ?? null;
+}
+
+async function saveCachedReply(organizationId: string, contentHash: string, replyText: string): Promise<void> {
+  await prisma.aIReplyCache.upsert({
+    where: { organizationId_contentHash: { organizationId, contentHash } },
+    create: { organizationId, contentHash, replyText },
+    update: { replyText },
+  });
+}
+
 // Natural-language fallback used when a bracket placeholder's real value
-// can't be resolved (no AI configured, or AI left it untouched) -- ensures
-// a raw "[ORDER_NUMBER]"-style token never reaches an agent or customer.
+// can't be resolved -- ensures a raw "[ORDER_NUMBER]"-style token never
+// reaches an agent or customer.
 const PLACEHOLDER_FALLBACKS: Record<string, string> = {
   ORDER_NUMBER: 'your order',
   PRODUCT_NAME: 'the item',
@@ -92,8 +130,8 @@ export interface PlaceholderValues {
 /**
  * Universal safety net: replaces every known [BRACKET] placeholder still
  * present in a draft with a real extracted value, or a natural fallback
- * phrase when no value was found -- run on every draft regardless of which
- * pipeline produced it, so a raw bracket token never reaches an agent.
+ * phrase when no value was found -- run on every draft, so a raw bracket
+ * token never reaches an agent.
  */
 export function fillKnownPlaceholders(text: string, values: PlaceholderValues): string {
   let res = text.replace(/\[NAME\]/g, values.name);
@@ -118,7 +156,7 @@ export function fillKnownPlaceholders(text: string, values: PlaceholderValues): 
 }
 
 /**
- * Wraps raw template text with polite greetings and closing signature.
+ * Wraps raw template/reply text with polite greetings and closing signature.
  */
 export function wrapResponseWithGreetingAndClosing(
   bodyText: string,
@@ -136,22 +174,22 @@ export function wrapResponseWithGreetingAndClosing(
 
   // 2. Wrap greeting if missing
   const normalizedGreeting = greetingText.trim().toLowerCase();
-  const startsWithGreeting = res.trim().toLowerCase().startsWith('hi') || 
-                             res.trim().toLowerCase().startsWith('hello') || 
-                             res.trim().toLowerCase().startsWith('dear') || 
+  const startsWithGreeting = res.trim().toLowerCase().startsWith('hi') ||
+                             res.trim().toLowerCase().startsWith('hello') ||
+                             res.trim().toLowerCase().startsWith('dear') ||
                              res.trim().toLowerCase().startsWith('i hope') ||
                              res.trim().toLowerCase().startsWith(normalizedGreeting);
-                      
+
   if (!startsWithGreeting) {
     res = `${greetingText} ${customerName},\n\n` + res;
   }
 
   // 3. Wrap regards / closing if missing
-  const hasClosing = res.includes(closingSignature) || 
+  const hasClosing = res.includes(closingSignature) ||
                      res.trim().toLowerCase().endsWith('regards') ||
                      res.trim().toLowerCase().endsWith('support team') ||
                      res.trim().toLowerCase().endsWith('stylecraft');
-                     
+
   if (!hasClosing) {
     res = res + `\n\n${closingSignature}`;
   }
@@ -160,9 +198,12 @@ export function wrapResponseWithGreetingAndClosing(
 }
 
 /**
- * Helper to add polite context to short templates in local mock fallback mode.
+ * Adds a category-appropriate intro sentence before a matched template's
+ * body -- this is the ONLY "expansion" a matched template gets; matching a
+ * template never calls the API (per cost policy, a template match is used
+ * directly with zero LLM calls).
  */
-function localMockExpandTemplate(templateName: string, templateBody: string): string {
+function expandMatchedTemplate(templateName: string, templateBody: string): string {
   const name = templateName.toLowerCase();
   let intro = '';
 
@@ -190,88 +231,9 @@ function localMockExpandTemplate(templateName: string, templateBody: string): st
 }
 
 /**
- * Uses Gemini or OpenAI to expand short templates with context.
- */
-export async function expandTemplateWithAI(
-  body: string,
-  subject: string,
-  customerName: string,
-  templateText: string,
-  greetingText: string,
-  closingSignature: string,
-  geminiKey?: string,
-  openaiKey?: string
-): Promise<string> {
-  const expansionPrompt = `
-You are a professional customer support agent for StyleCraft US.
-Write a polite, professional, and clear email reply to the customer's email using the approved template text as the absolute source of truth for the answer/instruction.
-
-CUSTOMER EMAIL:
----
-Subject: ${subject}
-Body:
-${body}
----
-
-APPROVED TEMPLATE TEXT (may contain bracket placeholders like [NAME], [ORDER_NUMBER], [PRODUCT_NAME], [PART_NAME], [TRACKING_LINK], [RMA_NUMBER], [SHIPPING_ADDRESS]):
----
-${templateText}
----
-
-The customer's real name is: ${customerName}
-
-INSTRUCTIONS:
-1. Keep every URL, fee amount, and policy instruction written in the APPROVED TEMPLATE TEXT verbatim -- do not alter links, dollar amounts, or day/business-day windows.
-2. Replace [NAME] with the customer's real name given above.
-3. For every other bracket placeholder ([ORDER_NUMBER], [PRODUCT_NAME], [PART_NAME], [TRACKING_LINK], [RMA_NUMBER], [SHIPPING_ADDRESS], etc.), read the CUSTOMER EMAIL above and substitute the actual value the customer mentioned (their order number, the product or part they named, an address they gave, etc.).
-4. Never leave a raw bracket placeholder in your output. If the customer's email genuinely does not mention a detail some placeholder needs, rephrase that sentence naturally without it (e.g. ask them to confirm it, or drop the specific reference) instead of leaving the bracket.
-5. Use the greeting: "${greetingText} ${customerName},".
-6. Use the closing signature: "${closingSignature}".
-7. Elevate the tone to be highly helpful, professional, and empathetic, expanding on the short template details to make it a fully readable, contextually appropriate response.
-
-Return only the final email reply body text. Do not include markdown formatting or backticks around it.
-`;
-
-  if (geminiKey) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: expansionPrompt }] }]
-      }),
-    });
-    if (response.ok) {
-      const data = await response.json();
-      const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (txt) return txt.trim();
-    }
-  } else if (openaiKey) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: expansionPrompt }],
-      }),
-    });
-    if (response.ok) {
-      const data = await response.json();
-      const txt = data.choices?.[0]?.message?.content;
-      if (txt) return txt.trim();
-    }
-  }
-
-  throw new Error('No API key resolved or LLM call failed');
-}
-
-/**
  * Structured keyword-based matching engine (primary/secondary/product/problem/
- * intent/negative tiers, see src/lib/keyword-engine.ts) that runs when API
- * keys are missing or as a rescue path when the LLM's own match is unusable.
+ * intent/negative tiers, see src/lib/keyword-engine.ts). Free/local -- this
+ * always runs before any API call, so a template match never costs a token.
  */
 export async function runKeywordMatcher(
   body: string,
@@ -310,17 +272,96 @@ export async function runKeywordMatcher(
 }
 
 /**
- * Fallback local rules-based engine that processes emails when no API keys are provided.
+ * Single OpenAI call for one email that matched no template -- minimal
+ * context (subject + first 100 words), short output (max_tokens capped),
+ * using the one shared client from src/lib/openai-client.ts.
  */
-async function runMockAIPipeline(
+export async function generateReplyWithAI(subject: string, briefBody: string): Promise<string> {
+  const completion = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    max_tokens: OPENAI_MAX_TOKENS,
+    temperature: OPENAI_TEMPERATURE,
+    messages: [
+      { role: 'system', content: ANALYSIS_SYSTEM_PROMPT },
+      { role: 'user', content: `Subject: ${subject}\n\n${briefBody}` },
+    ],
+  });
+  const text = completion.choices[0]?.message?.content;
+  if (!text) throw new Error('OpenAI returned an empty response');
+  return text.trim();
+}
+
+/**
+ * Same as generateReplyWithAI but for N unmatched emails in ONE call
+ * instead of N separate calls -- used by the live IMAP sync loop when more
+ * than one unseen message needs a fresh reply. Token budget scales with
+ * batch size (each reply still gets roughly the same per-email budget as a
+ * single call) but is capped so one giant batch can't balloon cost.
+ */
+export async function generateRepliesBatch(items: { subject: string; briefBody: string }[]): Promise<string[]> {
+  if (items.length === 0) return [];
+  if (items.length === 1) {
+    return [await generateReplyWithAI(items[0].subject, items[0].briefBody)];
+  }
+
+  const numberedList = items.map((it, i) => `${i + 1}. Subject: ${it.subject}\n${it.briefBody}`).join('\n\n');
+  const completion = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    max_tokens: Math.min(OPENAI_MAX_TOKENS * items.length, 1200),
+    temperature: OPENAI_TEMPERATURE,
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: `${ANALYSIS_SYSTEM_PROMPT} You will receive multiple emails, each numbered. Return ONLY a JSON object of the shape {"replies": ["...", "...", ...]} with exactly one short reply per email, in the same order as the input. Do not include markdown formatting.`,
+      },
+      { role: 'user', content: numberedList },
+    ],
+  });
+
+  const text = completion.choices[0]?.message?.content || '';
+  const parsed = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+  const replies = Array.isArray(parsed.replies) ? parsed.replies : [];
+  if (replies.length !== items.length) {
+    throw new Error(`Expected ${items.length} batched replies, got ${replies.length}`);
+  }
+  return replies;
+}
+
+interface ClassifiedEmail {
+  language: string;
+  category: string;
+  sentiment: string;
+  urgency: string;
+  priority: string;
+  spam: boolean;
+  duplicate: boolean;
+  customerName: string;
+  orderNumber: string | null;
+  greeting: string;
+  closing: string;
+  subject: string;
+  briefBody: string;
+  matched: { templateId: string; draftReply: string; confidence: number; summary: string } | null;
+}
+
+/**
+ * Free local classification (language/spam/category/sentiment/urgency/
+ * priority) plus the free keyword-based template matcher -- shared by both
+ * the single-email and batched entry points below. Never touches the API:
+ * a template match is built right here with zero LLM calls, and everything
+ * needed for the (possible) API call afterward -- subject, brief body,
+ * customer name, greeting/closing -- is bundled into the return value.
+ */
+async function classifyEmail(
   body: string,
   subject: string,
   sender: string,
   organizationId: string,
   parsedSenderName?: string | null
-): Promise<AIPipelineResult> {
+): Promise<ClassifiedEmail> {
   const normalizedText = (subject + ' ' + body).toLowerCase();
-  
+
   // 1. Language Detection
   let language = 'en';
   if (normalizedText.includes('hola') || normalizedText.includes('gracias') && normalizedText.includes('por favor')) {
@@ -357,7 +398,7 @@ async function runMockAIPipeline(
   let sentiment = 'NEUTRAL';
   const isAngryText = normalizedText.includes('sucks') || normalizedText.includes('terrible') || normalizedText.includes('broken') || normalizedText.includes('unacceptable') || normalizedText.includes('useless') || normalizedText.includes('fix this') || normalizedText.includes('immediately');
   const isAllCaps = body.length > 10 && body === body.toUpperCase();
-  
+
   if (isAngryText || isAllCaps) {
     sentiment = 'ANGRY';
   } else if (normalizedText.includes('wrong') || normalizedText.includes('problem') || normalizedText.includes('fail') || normalizedText.includes('unhappy')) {
@@ -385,53 +426,62 @@ async function runMockAIPipeline(
     priority = 'URGENT';
   }
 
-  // 6. Duplicate Check
   const duplicate = await checkDuplicate(sender, subject, organizationId);
+  const customerName = resolveCustomerName(sender, parsedSenderName);
+  const orderNumber = extractOrderNumberFromText(`${subject} ${body}`);
 
-  // 7. Keyword matching fallback
+  const settings = await prisma.settings.findUnique({ where: { organizationId } });
+  const greeting = settings?.greeting || 'Hello';
+  const closing = settings?.closing || 'Regards,\nStyleCraft US Support Team';
+
+  // Template match -- before anything touches the API.
   const keywordMatch = await runKeywordMatcher(body, subject, organizationId);
-  
-  let draftReply = FALLBACK_RESPONSE;
-  let summary = `Customer inquiry regarding: ${subject}`;
-  let matchedTemplateId: string | null = null;
-  let aiConfidence = 0.50;
-
+  let matched: ClassifiedEmail['matched'] = null;
   if (keywordMatch.matchedTemplateId) {
-    const template = await prisma.template.findUnique({
-      where: { id: keywordMatch.matchedTemplateId },
-    });
+    const template = await prisma.template.findUnique({ where: { id: keywordMatch.matchedTemplateId } });
     if (template) {
-      const settings = await prisma.settings.findUnique({ where: { organizationId } });
-      const greeting = settings?.greeting || 'Hello';
-      const closing = settings?.closing || 'Regards,\nStyleCraft US Support Team';
-      const customerName = resolveCustomerName(sender, parsedSenderName);
-      const orderNumber = extractOrderNumberFromText(`${subject} ${body}`);
-      const expandedBody = localMockExpandTemplate(template.name, template.body);
-      draftReply = wrapResponseWithGreetingAndClosing(expandedBody, customerName, greeting, closing, { orderNumber });
-      matchedTemplateId = template.id;
-      aiConfidence = keywordMatch.confidenceScore;
-      summary = `Matched "${template.name}" — ${keywordMatch.matchReason}.`;
+      const expandedBody = expandMatchedTemplate(template.name, template.body);
+      const draftReply = wrapResponseWithGreetingAndClosing(expandedBody, customerName, greeting, closing, { orderNumber });
+      matched = {
+        templateId: template.id,
+        draftReply,
+        confidence: keywordMatch.confidenceScore,
+        summary: `Matched "${template.name}" — ${keywordMatch.matchReason}.`,
+      };
     }
   }
 
   return {
-    language,
-    category,
-    sentiment,
-    urgency,
-    priority,
-    aiConfidence,
-    spam,
-    duplicate,
-    draftReply,
-    summary,
-    matchedTemplateId,
-    aiProvider: 'Keyword Matcher',
+    language, category, sentiment, urgency, priority, spam, duplicate,
+    customerName, orderNumber, greeting, closing, subject,
+    briefBody: first100Words(body), matched,
+  };
+}
+
+function matchedToResult(c: ClassifiedEmail): AIPipelineResult {
+  const m = c.matched!;
+  return {
+    language: c.language, category: c.category, sentiment: c.sentiment, urgency: c.urgency, priority: c.priority,
+    aiConfidence: m.confidence, spam: c.spam, duplicate: c.duplicate, draftReply: m.draftReply,
+    summary: m.summary, matchedTemplateId: m.templateId, aiProvider: 'Keyword Matcher',
+  };
+}
+
+function finalizeUnmatchedResult(c: ClassifiedEmail, replyText: string, aiProvider: string): AIPipelineResult {
+  const draftReply = wrapResponseWithGreetingAndClosing(replyText, c.customerName, c.greeting, c.closing, { orderNumber: c.orderNumber });
+  return {
+    language: c.language, category: c.category, sentiment: c.sentiment, urgency: c.urgency, priority: c.priority,
+    aiConfidence: 0.5, spam: c.spam, duplicate: c.duplicate, draftReply,
+    summary: `Customer inquiry regarding: ${c.subject}`, matchedTemplateId: null, aiProvider,
   };
 }
 
 /**
- * Runs the AI classification and semantic matching pipeline.
+ * Runs the full email-processing pipeline for ONE email: free local
+ * classification, then the free keyword-based template matcher -- a
+ * template match is used directly with ZERO API calls. OpenAI is only ever
+ * consulted for the remaining case (no template matched), with minimal
+ * input and a cache so the same email content is never analyzed twice.
  */
 export async function runAIPipeline(
   body: string,
@@ -440,221 +490,92 @@ export async function runAIPipeline(
   organizationId: string,
   parsedSenderName?: string | null
 ): Promise<AIPipelineResult> {
-  const settings = await prisma.settings.findUnique({
-    where: { organizationId },
-  });
+  const c = await classifyEmail(body, subject, sender, organizationId, parsedSenderName);
+  if (c.matched) return matchedToResult(c);
 
-  const geminiKey = settings?.geminiApiKey || process.env.GEMINI_API_KEY;
-  const openaiKey = settings?.openaiApiKey || process.env.OPENAI_API_KEY;
+  let replyText = FALLBACK_RESPONSE;
+  let aiProvider = 'Keyword Matcher';
 
-  const duplicate = await checkDuplicate(sender, subject, organizationId);
-  const customerName = resolveCustomerName(sender, parsedSenderName);
-  const orderNumber = extractOrderNumberFromText(`${subject} ${body}`);
-
-  if (!geminiKey && !openaiKey) {
-    return runMockAIPipeline(body, subject, sender, organizationId, parsedSenderName);
+  if (process.env.OPENAI_API_KEY) {
+    const contentHash = hashEmailContent(subject, c.briefBody);
+    const cached = await getCachedReply(organizationId, contentHash);
+    if (cached) {
+      replyText = cached;
+      aiProvider = 'OpenAI (cached)';
+    } else {
+      try {
+        replyText = await generateReplyWithAI(subject, c.briefBody);
+        await saveCachedReply(organizationId, contentHash, replyText);
+        aiProvider = `OpenAI (${OPENAI_MODEL})`;
+      } catch (error) {
+        console.error('OpenAI reply generation failed, using fallback response:', error);
+      }
+    }
   }
 
-  const templates = await prisma.template.findMany({
-    where: { organizationId },
+  return finalizeUnmatchedResult(c, replyText, aiProvider);
+}
+
+/**
+ * Same pipeline as runAIPipeline, but for N emails from the same sync run:
+ * every email is classified and template-matched individually (all free),
+ * then every email that matched NO template is sent to OpenAI in a single
+ * batched call instead of N separate calls. Returned array is in the same
+ * order as `items`. Used by the live IMAP sync loop, which processes many
+ * unseen messages per run.
+ */
+export async function runAIPipelineBatch(
+  items: { body: string; subject: string; sender: string; organizationId: string; parsedSenderName?: string | null }[]
+): Promise<AIPipelineResult[]> {
+  if (items.length === 0) return [];
+
+  const classified = await Promise.all(
+    items.map(it => classifyEmail(it.body, it.subject, it.sender, it.organizationId, it.parsedSenderName))
+  );
+
+  const results: (AIPipelineResult | null)[] = classified.map(c => (c.matched ? matchedToResult(c) : null));
+  const pendingIdx = classified.map((_, i) => i).filter(i => !classified[i].matched);
+
+  if (pendingIdx.length === 0) {
+    return results as AIPipelineResult[];
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    pendingIdx.forEach(i => { results[i] = finalizeUnmatchedResult(classified[i], FALLBACK_RESPONSE, 'Keyword Matcher'); });
+    return results as AIPipelineResult[];
+  }
+
+  // All emails in one sync run belong to the same inbox/organization.
+  const organizationId = items[0].organizationId;
+  const cachedTexts = await Promise.all(
+    pendingIdx.map(i => getCachedReply(organizationId, hashEmailContent(classified[i].subject, classified[i].briefBody)))
+  );
+
+  const stillNeeded = pendingIdx.filter((_, k) => !cachedTexts[k]);
+  let freshReplies: string[] = [];
+  if (stillNeeded.length > 0) {
+    try {
+      freshReplies = await generateRepliesBatch(stillNeeded.map(i => ({ subject: classified[i].subject, briefBody: classified[i].briefBody })));
+      await Promise.all(stillNeeded.map((i, k) =>
+        saveCachedReply(organizationId, hashEmailContent(classified[i].subject, classified[i].briefBody), freshReplies[k])
+      ));
+    } catch (error) {
+      console.error('Batched OpenAI reply generation failed, using fallback response for this batch:', error);
+    }
+  }
+
+  let freshCursor = 0;
+  pendingIdx.forEach((i, k) => {
+    const cached = cachedTexts[k];
+    if (cached) {
+      results[i] = finalizeUnmatchedResult(classified[i], cached, 'OpenAI (cached)');
+    } else if (freshReplies[freshCursor] !== undefined) {
+      results[i] = finalizeUnmatchedResult(classified[i], freshReplies[freshCursor], `OpenAI (${OPENAI_MODEL})`);
+      freshCursor++;
+    } else {
+      results[i] = finalizeUnmatchedResult(classified[i], FALLBACK_RESPONSE, 'Keyword Matcher');
+    }
   });
 
-  const templatesListStr = templates.map(t => {
-    return `- ID: "${t.id}", Title: "${t.name}", Keywords: "${t.variables || ''}"`;
-  }).join('\n');
-
-  const threadContext = await getThreadContext(organizationId, sender, undefined, 5);
-  const threadContextStr = threadContext.length > 0
-    ? threadContext.map(e => {
-        const tmplName = e.matchedTemplateId ? templates.find(t => t.id === e.matchedTemplateId)?.name : null;
-        return `- [${e.createdAt.toISOString().slice(0, 10)}] Subject: "${e.subject}" ${tmplName ? `(previously matched: "${tmplName}")` : ''}`;
-      }).join('\n')
-    : 'None — this is the first email from this sender.';
-
-  const analysisPrompt = `
-You are an advanced email intent classification and template-matching agent for StyleCraft US customer support.
-Analyze the following incoming email:
----
-Sender: ${sender}
-Subject: ${subject}
-Body:
-${body}
----
-
-PREVIOUS emails from this same sender (most recent first) — use this context if the
-new email is a follow-up, references an earlier issue, or contradicts what was said
-before. Do not treat an obvious follow-up as a brand new, unrelated request:
-${threadContextStr}
-
-Approved response templates in the database:
-${templatesListStr}
-
-Your task is to analyze the email and return a JSON object with the following fields:
-1. "language": Two-letter language code (e.g. "en", "es").
-2. "category": The customer intent category. Choose one of the template titles if it fits, or return "General Inquiry".
-3. "sentiment": Must be one of: "POSITIVE", "NEUTRAL", "NEGATIVE", "ANGRY".
-4. "urgency": Must be one of: "LOW", "MEDIUM", "HIGH".
-5. "priority": Must be one of: "LOW", "MEDIUM", "HIGH", "URGENT".
-6. "summary": A brief 1-sentence summary of the customer's issue.
-7. "matchedTemplateId": The ID of the best matching template from the approved templates database list above. Return null if no template matches or is unclear.
-8. "confidenceScore": A decimal number between 0.0 and 1.0 representing your confidence in this template match.
-9. "spam": Boolean (true/false) indicating if this is marketing spam, advertising, or phishing.
-10. "contextReason": If the previous-email context above changed which template you selected compared to what the new email's text alone would suggest, briefly explain why (1 sentence). Otherwise null.
-
-Return ONLY a valid JSON object. Do not include markdown code block formatting.
-`;
-
-  try {
-    let responseText = '';
-    const provider = geminiKey ? 'Gemini' : 'OpenAI';
-    
-    if (geminiKey) {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: analysisPrompt }] }],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Gemini API returned status ${response.status}`);
-      }
-      
-      const data = await response.json();
-      responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else if (openaiKey) {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${openaiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: 'You are a JSON generator.' },
-            { role: 'user', content: analysisPrompt },
-          ],
-          response_format: { type: 'json_object' },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API returned status ${response.status}`);
-      }
-
-      const data = await response.json();
-      responseText = data.choices?.[0]?.message?.content || '';
-    }
-
-    const jsonStr = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-    const result = JSON.parse(jsonStr);
-
-    let draftReply = FALLBACK_RESPONSE;
-    let matchedTemplateId: string | null = null;
-    const confidenceScore = typeof result.confidenceScore === 'number' ? result.confidenceScore : 0.50;
-
-    if (result.matchedTemplateId) {
-      const template = await prisma.template.findUnique({
-        where: { id: result.matchedTemplateId },
-      });
-      if (template) {
-        matchedTemplateId = template.id;
-        const greetingText = settings?.greeting || 'Hello';
-        const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
-        
-        try {
-          const rawDraft = await expandTemplateWithAI(
-            body,
-            subject,
-            customerName,
-            template.body,
-            greetingText,
-            closingSignature,
-            geminiKey,
-            openaiKey
-          );
-          draftReply = wrapResponseWithGreetingAndClosing(rawDraft, customerName, greetingText, closingSignature, { orderNumber });
-        } catch (expandErr) {
-          console.error('AI expansion failed, using wrap fallback:', expandErr);
-          const expandedBody = localMockExpandTemplate(template.name, template.body);
-          draftReply = wrapResponseWithGreetingAndClosing(expandedBody, customerName, greetingText, closingSignature, { orderNumber });
-        }
-      }
-    }
-
-    if (!matchedTemplateId) {
-      // The LLM either found no match or suggested a templateId that
-      // doesn't exist in the database (e.g. it slightly misquoted the id).
-      // Always try the keyword matcher before giving up to the canned
-      // fallback text — the fallback must only be used when NO approved
-      // template matches through either method, not just when the LLM's
-      // own (possibly wrong) confidence happened to be high.
-      const keywordMatch = await runKeywordMatcher(body, subject, organizationId);
-      if (keywordMatch.matchedTemplateId) {
-        const template = await prisma.template.findUnique({
-          where: { id: keywordMatch.matchedTemplateId },
-        });
-        if (template) {
-          matchedTemplateId = template.id;
-          const greetingText = settings?.greeting || 'Hello';
-          const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
-          
-          try {
-            const rawDraft = await expandTemplateWithAI(
-              body,
-              subject,
-              customerName,
-              template.body,
-              greetingText,
-              closingSignature,
-              geminiKey,
-              openaiKey
-            );
-            draftReply = wrapResponseWithGreetingAndClosing(rawDraft, customerName, greetingText, closingSignature, { orderNumber });
-          } catch (expandErr) {
-            const expandedBody = localMockExpandTemplate(template.name, template.body);
-            draftReply = wrapResponseWithGreetingAndClosing(expandedBody, customerName, greetingText, closingSignature, { orderNumber });
-          }
-
-          return {
-            language: result.language || 'en',
-            category: result.category || 'General Question',
-            sentiment: result.sentiment || 'NEUTRAL',
-            urgency: result.urgency || 'MEDIUM',
-            priority: result.priority || 'MEDIUM',
-            aiConfidence: keywordMatch.confidenceScore,
-            spam: !!result.spam,
-            duplicate,
-            draftReply,
-            summary: `Matched "${template.name}" — ${keywordMatch.matchReason}.`,
-            matchedTemplateId,
-            aiProvider: 'Keyword Matcher',
-          };
-        }
-      }
-    }
-
-    return {
-      language: result.language || 'en',
-      category: result.category || 'General Question',
-      sentiment: result.sentiment || 'NEUTRAL',
-      urgency: result.urgency || 'MEDIUM',
-      priority: result.priority || 'MEDIUM',
-      aiConfidence: confidenceScore,
-      spam: !!result.spam,
-      duplicate,
-      draftReply,
-      summary: result.contextReason ? `${result.summary || subject} (${result.contextReason})` : (result.summary || `Customer inquiry regarding: ${subject}`),
-      matchedTemplateId,
-      aiProvider: provider,
-    };
-  } catch (error) {
-    console.error('LLM Pipeline failed, falling back to local parsing:', error);
-    const fallback = await runMockAIPipeline(body, subject, sender, organizationId, parsedSenderName);
-    return { ...fallback, duplicate };
-  }
+  return results as AIPipelineResult[];
 }

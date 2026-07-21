@@ -11,7 +11,6 @@
     "test": "npx tsx scripts/run-tests.ts"
   },
   "dependencies": {
-    "@google/genai": "^2.10.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@tanstack/react-query": "^5.101.2",
@@ -23,6 +22,7 @@
     "mailparser": "^3.9.12",
     "next": "16.2.9",
     "nodemailer": "^9.0.1",
+    "openai": "^6.48.0",
     "pg": "^8.22.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
