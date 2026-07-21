@@ -10,7 +10,7 @@ import { logAudit } from '@/lib/audit';
 // since accuracy feedback is "work" on the email, not passive viewing.
 const OWNER_ONLY_ACTIONS = new Set([
   'APPROVE', 'EDIT_DRAFT', 'SEND_CUSTOM', 'REJECT',
-  'CHANGE_STATUS', 'ASSIGN_TEMPLATE', 'ARCHIVE', 'SUBMIT_FEEDBACK',
+  'CHANGE_STATUS', 'ASSIGN_TEMPLATE', 'ARCHIVE', 'SUBMIT_FEEDBACK', 'FILL_TEMPLATE',
 ]);
 
 export async function GET(
@@ -50,8 +50,20 @@ export async function GET(
           });
           const greetingText = settings?.greeting || 'Hello';
           const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
-          const { wrapResponseWithGreetingAndClosing } = await import('@/lib/ai-pipeline');
-          let replyBody = wrapResponseWithGreetingAndClosing(template.body, email.sender, greetingText, closingSignature);
+          const { wrapResponseWithGreetingAndClosing, expandTemplateWithAI, resolveCustomerName, extractOrderNumberFromText } = await import('@/lib/ai-pipeline');
+          const customerName = resolveCustomerName(email.sender, email.customer?.name);
+          const orderNumber = extractOrderNumberFromText(`${email.subject} ${email.body}`);
+          const geminiKey = settings?.geminiApiKey || process.env.GEMINI_API_KEY;
+          const openaiKey = settings?.openaiApiKey || process.env.OPENAI_API_KEY;
+
+          let replyBody: string;
+          try {
+            if (!geminiKey && !openaiKey) throw new Error('No AI key configured');
+            const rawDraft = await expandTemplateWithAI(email.body, email.subject, customerName, template.body, greetingText, closingSignature, geminiKey, openaiKey);
+            replyBody = wrapResponseWithGreetingAndClosing(rawDraft, customerName, greetingText, closingSignature, { orderNumber });
+          } catch (expandErr) {
+            replyBody = wrapResponseWithGreetingAndClosing(template.body, customerName, greetingText, closingSignature, { orderNumber });
+          }
 
           // Update Email matching details in DB
           await prisma.email.update({
@@ -165,7 +177,7 @@ export async function POST(
 
     const email = await prisma.email.findUnique({
       where: { id },
-      include: { autoReplies: true },
+      include: { autoReplies: true, customer: true },
     });
 
     if (!email) {
@@ -366,6 +378,40 @@ export async function POST(
       });
 
       return NextResponse.json({ success: true, email: updated });
+    }
+
+    if (action === 'FILL_TEMPLATE') {
+      // An agent manually picked a template from the dropdown -- generate
+      // its draft body the same way the sync pipeline does: AI-expanded
+      // (when configured) with the real customer name and any order/detail
+      // extracted from their email, or a deterministic fallback otherwise.
+      // Never returns a body with raw [BRACKET] placeholders in it.
+      const { templateId } = body;
+      const template = await prisma.template.findUnique({ where: { id: templateId } });
+      if (!template) {
+        return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+      }
+
+      const settings = await prisma.settings.findUnique({ where: { organizationId: email.organizationId } });
+      const greetingText = settings?.greeting || 'Hello';
+      const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
+      const geminiKey = settings?.geminiApiKey || process.env.GEMINI_API_KEY;
+      const openaiKey = settings?.openaiApiKey || process.env.OPENAI_API_KEY;
+
+      const { wrapResponseWithGreetingAndClosing, expandTemplateWithAI, resolveCustomerName, extractOrderNumberFromText } = await import('@/lib/ai-pipeline');
+      const customerName = resolveCustomerName(email.sender, email.customer?.name);
+      const orderNumber = extractOrderNumberFromText(`${email.subject} ${email.body}`);
+
+      let responseBody: string;
+      try {
+        if (!geminiKey && !openaiKey) throw new Error('No AI key configured');
+        const rawDraft = await expandTemplateWithAI(email.body, email.subject, customerName, template.body, greetingText, closingSignature, geminiKey, openaiKey);
+        responseBody = wrapResponseWithGreetingAndClosing(rawDraft, customerName, greetingText, closingSignature, { orderNumber });
+      } catch (expandErr) {
+        responseBody = wrapResponseWithGreetingAndClosing(template.body, customerName, greetingText, closingSignature, { orderNumber });
+      }
+
+      return NextResponse.json({ success: true, responseBody });
     }
 
     if (action === 'ASSIGN_TEMPLATE') {

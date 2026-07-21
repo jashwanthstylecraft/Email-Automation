@@ -38,20 +38,101 @@ async function checkDuplicate(sender: string, subject: string, organizationId: s
 }
 
 /**
+ * Resolves the name to greet a customer by: a real parsed display name
+ * (from the email's "From" header, or a previously-saved Customer.name)
+ * always wins over guessing one from the address local-part.
+ */
+export function resolveCustomerName(senderEmail: string, parsedName?: string | null): string {
+  const trimmed = parsedName?.trim();
+  if (trimmed) return trimmed;
+  return senderEmail.split('@')[0].split('.')[0].replace(/^\w/, (c) => c.toUpperCase());
+}
+
+/**
+ * Best-effort deterministic extraction of an order number the customer
+ * mentioned in their own email -- used as the no-AI-key fallback and as a
+ * last-resort safety net even when AI is configured. Matches StyleCraft's
+ * own order ID formats (e.g. "S000097815", "G000062862") as well as generic
+ * "order # 12345" / "order number: ABC123" phrasing.
+ */
+export function extractOrderNumberFromText(text: string): string | null {
+  const idMatch = text.match(/\b[SG]0*\d{5,}\b/);
+  if (idMatch) return idMatch[0];
+  const phraseMatch = text.match(/order\s*(?:number|#|no\.?)?\s*[:#]?\s*([A-Z0-9-]{4,})/i);
+  if (phraseMatch) return phraseMatch[1];
+  return null;
+}
+
+// Natural-language fallback used when a bracket placeholder's real value
+// can't be resolved (no AI configured, or AI left it untouched) -- ensures
+// a raw "[ORDER_NUMBER]"-style token never reaches an agent or customer.
+const PLACEHOLDER_FALLBACKS: Record<string, string> = {
+  ORDER_NUMBER: 'your order',
+  PRODUCT_NAME: 'the item',
+  PART_NAME: 'the part',
+  TRACKING_LINK: 'the tracking link once it is available',
+  RMA_NUMBER: 'the RMA number provided',
+  RA_NUMBER: 'the RA number provided',
+  SHIPPING_ADDRESS: 'your shipping address',
+  SELLER_NAME: 'the seller',
+};
+
+export interface PlaceholderValues {
+  name: string;
+  orderNumber?: string | null;
+  productName?: string | null;
+  partName?: string | null;
+  trackingLink?: string | null;
+  rmaNumber?: string | null;
+  raNumber?: string | null;
+  shippingAddress?: string | null;
+  sellerName?: string | null;
+}
+
+/**
+ * Universal safety net: replaces every known [BRACKET] placeholder still
+ * present in a draft with a real extracted value, or a natural fallback
+ * phrase when no value was found -- run on every draft regardless of which
+ * pipeline produced it, so a raw bracket token never reaches an agent.
+ */
+export function fillKnownPlaceholders(text: string, values: PlaceholderValues): string {
+  let res = text.replace(/\[NAME\]/g, values.name);
+
+  const tokenValues: Record<string, string | null | undefined> = {
+    ORDER_NUMBER: values.orderNumber,
+    PRODUCT_NAME: values.productName,
+    PART_NAME: values.partName,
+    TRACKING_LINK: values.trackingLink,
+    RMA_NUMBER: values.rmaNumber,
+    RA_NUMBER: values.raNumber,
+    SHIPPING_ADDRESS: values.shippingAddress,
+    SELLER_NAME: values.sellerName,
+  };
+
+  for (const [token, value] of Object.entries(tokenValues)) {
+    const pattern = new RegExp(`\\[${token}\\]`, 'g');
+    res = res.replace(pattern, (value && value.trim()) || PLACEHOLDER_FALLBACKS[token]);
+  }
+
+  return res;
+}
+
+/**
  * Wraps raw template text with polite greetings and closing signature.
  */
 export function wrapResponseWithGreetingAndClosing(
   bodyText: string,
-  senderEmail: string,
+  customerName: string,
   greetingText: string,
-  closingSignature: string
+  closingSignature: string,
+  extractedValues?: Partial<PlaceholderValues>
 ): string {
-  const customerName = senderEmail.split('@')[0].split('.')[0].replace(/^\w/, (c) => c.toUpperCase());
   let res = bodyText;
 
   // 1. Interpolate placeholders first
   res = res.replace(/\{\{customer_name\}\}/g, customerName);
   res = res.replace(/\{\{closing\}\}/g, closingSignature);
+  res = fillKnownPlaceholders(res, { name: customerName, ...extractedValues });
 
   // 2. Wrap greeting if missing
   const normalizedGreeting = greetingText.trim().toLowerCase();
@@ -111,17 +192,16 @@ function localMockExpandTemplate(templateName: string, templateBody: string): st
 /**
  * Uses Gemini or OpenAI to expand short templates with context.
  */
-async function expandTemplateWithAI(
+export async function expandTemplateWithAI(
   body: string,
   subject: string,
-  sender: string,
+  customerName: string,
   templateText: string,
   greetingText: string,
   closingSignature: string,
   geminiKey?: string,
   openaiKey?: string
 ): Promise<string> {
-  const customerName = sender.split('@')[0].split('.')[0].replace(/^\w/, (c) => c.toUpperCase());
   const expansionPrompt = `
 You are a professional customer support agent for StyleCraft US.
 Write a polite, professional, and clear email reply to the customer's email using the approved template text as the absolute source of truth for the answer/instruction.
@@ -133,16 +213,21 @@ Body:
 ${body}
 ---
 
-APPROVED TEMPLATE TEXT:
+APPROVED TEMPLATE TEXT (may contain bracket placeholders like [NAME], [ORDER_NUMBER], [PRODUCT_NAME], [PART_NAME], [TRACKING_LINK], [RMA_NUMBER], [SHIPPING_ADDRESS]):
 ---
 ${templateText}
 ---
 
+The customer's real name is: ${customerName}
+
 INSTRUCTIONS:
-1. You MUST include the facts, URLs, and support guidelines in the APPROVED TEMPLATE TEXT verbatim. Do not alter links or numbers.
-2. Use the greeting: "${greetingText} ${customerName},".
-3. Use the closing signature: "${closingSignature}".
-4. Elevate the tone to be highly helpful, professional, and empathetic, expanding on the short template details to make it a fully readable, contextually appropriate response.
+1. Keep every URL, fee amount, and policy instruction written in the APPROVED TEMPLATE TEXT verbatim -- do not alter links, dollar amounts, or day/business-day windows.
+2. Replace [NAME] with the customer's real name given above.
+3. For every other bracket placeholder ([ORDER_NUMBER], [PRODUCT_NAME], [PART_NAME], [TRACKING_LINK], [RMA_NUMBER], [SHIPPING_ADDRESS], etc.), read the CUSTOMER EMAIL above and substitute the actual value the customer mentioned (their order number, the product or part they named, an address they gave, etc.).
+4. Never leave a raw bracket placeholder in your output. If the customer's email genuinely does not mention a detail some placeholder needs, rephrase that sentence naturally without it (e.g. ask them to confirm it, or drop the specific reference) instead of leaving the bracket.
+5. Use the greeting: "${greetingText} ${customerName},".
+6. Use the closing signature: "${closingSignature}".
+7. Elevate the tone to be highly helpful, professional, and empathetic, expanding on the short template details to make it a fully readable, contextually appropriate response.
 
 Return only the final email reply body text. Do not include markdown formatting or backticks around it.
 `;
@@ -231,7 +316,8 @@ async function runMockAIPipeline(
   body: string,
   subject: string,
   sender: string,
-  organizationId: string
+  organizationId: string,
+  parsedSenderName?: string | null
 ): Promise<AIPipelineResult> {
   const normalizedText = (subject + ' ' + body).toLowerCase();
   
@@ -318,8 +404,10 @@ async function runMockAIPipeline(
       const settings = await prisma.settings.findUnique({ where: { organizationId } });
       const greeting = settings?.greeting || 'Hello';
       const closing = settings?.closing || 'Regards,\nStyleCraft US Support Team';
+      const customerName = resolveCustomerName(sender, parsedSenderName);
+      const orderNumber = extractOrderNumberFromText(`${subject} ${body}`);
       const expandedBody = localMockExpandTemplate(template.name, template.body);
-      draftReply = wrapResponseWithGreetingAndClosing(expandedBody, sender, greeting, closing);
+      draftReply = wrapResponseWithGreetingAndClosing(expandedBody, customerName, greeting, closing, { orderNumber });
       matchedTemplateId = template.id;
       aiConfidence = keywordMatch.confidenceScore;
       summary = `Matched "${template.name}" — ${keywordMatch.matchReason}.`;
@@ -349,7 +437,8 @@ export async function runAIPipeline(
   body: string,
   subject: string,
   sender: string,
-  organizationId: string
+  organizationId: string,
+  parsedSenderName?: string | null
 ): Promise<AIPipelineResult> {
   const settings = await prisma.settings.findUnique({
     where: { organizationId },
@@ -359,9 +448,11 @@ export async function runAIPipeline(
   const openaiKey = settings?.openaiApiKey || process.env.OPENAI_API_KEY;
 
   const duplicate = await checkDuplicate(sender, subject, organizationId);
+  const customerName = resolveCustomerName(sender, parsedSenderName);
+  const orderNumber = extractOrderNumberFromText(`${subject} ${body}`);
 
   if (!geminiKey && !openaiKey) {
-    return runMockAIPipeline(body, subject, sender, organizationId);
+    return runMockAIPipeline(body, subject, sender, organizationId, parsedSenderName);
   }
 
   const templates = await prisma.template.findMany({
@@ -479,18 +570,18 @@ Return ONLY a valid JSON object. Do not include markdown code block formatting.
           const rawDraft = await expandTemplateWithAI(
             body,
             subject,
-            sender,
+            customerName,
             template.body,
             greetingText,
             closingSignature,
             geminiKey,
             openaiKey
           );
-          draftReply = wrapResponseWithGreetingAndClosing(rawDraft, sender, greetingText, closingSignature);
+          draftReply = wrapResponseWithGreetingAndClosing(rawDraft, customerName, greetingText, closingSignature, { orderNumber });
         } catch (expandErr) {
           console.error('AI expansion failed, using wrap fallback:', expandErr);
           const expandedBody = localMockExpandTemplate(template.name, template.body);
-          draftReply = wrapResponseWithGreetingAndClosing(expandedBody, sender, greetingText, closingSignature);
+          draftReply = wrapResponseWithGreetingAndClosing(expandedBody, customerName, greetingText, closingSignature, { orderNumber });
         }
       }
     }
@@ -516,17 +607,17 @@ Return ONLY a valid JSON object. Do not include markdown code block formatting.
             const rawDraft = await expandTemplateWithAI(
               body,
               subject,
-              sender,
+              customerName,
               template.body,
               greetingText,
               closingSignature,
               geminiKey,
               openaiKey
             );
-            draftReply = wrapResponseWithGreetingAndClosing(rawDraft, sender, greetingText, closingSignature);
+            draftReply = wrapResponseWithGreetingAndClosing(rawDraft, customerName, greetingText, closingSignature, { orderNumber });
           } catch (expandErr) {
             const expandedBody = localMockExpandTemplate(template.name, template.body);
-            draftReply = wrapResponseWithGreetingAndClosing(expandedBody, sender, greetingText, closingSignature);
+            draftReply = wrapResponseWithGreetingAndClosing(expandedBody, customerName, greetingText, closingSignature, { orderNumber });
           }
 
           return {
@@ -563,7 +654,7 @@ Return ONLY a valid JSON object. Do not include markdown code block formatting.
     };
   } catch (error) {
     console.error('LLM Pipeline failed, falling back to local parsing:', error);
-    const fallback = await runMockAIPipeline(body, subject, sender, organizationId);
+    const fallback = await runMockAIPipeline(body, subject, sender, organizationId, parsedSenderName);
     return { ...fallback, duplicate };
   }
 }

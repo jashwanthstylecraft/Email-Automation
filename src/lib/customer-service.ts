@@ -6,11 +6,12 @@ import { prisma } from './prisma';
  * -- every synced email attaches to a running per-customer profile instead
  * of being treated as an isolated, unrelated request.
  */
-export async function upsertCustomerForEmail(organizationId: string, senderEmail: string, emailId: string) {
+export async function upsertCustomerForEmail(organizationId: string, senderEmail: string, emailId: string, senderName?: string | null) {
+  const name = senderName?.trim() || undefined;
   const customer = await prisma.customer.upsert({
     where: { organizationId_email: { organizationId, email: senderEmail } },
-    update: { totalEmails: { increment: 1 }, lastEmailAt: new Date() },
-    create: { organizationId, email: senderEmail, totalEmails: 1, lastEmailAt: new Date() },
+    update: { totalEmails: { increment: 1 }, lastEmailAt: new Date(), ...(name ? { name } : {}) },
+    create: { organizationId, email: senderEmail, totalEmails: 1, lastEmailAt: new Date(), ...(name ? { name } : {}) },
   });
   await prisma.email.update({ where: { id: emailId }, data: { customerId: customer.id } });
   return customer;

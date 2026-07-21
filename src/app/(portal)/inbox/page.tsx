@@ -256,11 +256,26 @@ export default function InboxPage() {
     const selectedTmpl = templates.find(t => t.id === templateId);
     if (!selectedTmpl) return;
 
-    const newBody = interpolateTemplateBody(selectedTmpl, selectedEmail);
-
-    // Set local state instantly
-    setReplyText(newBody);
+    // Ask the server to fill this template in for this specific email --
+    // real customer name plus any order/product/part detail AI (or a
+    // deterministic fallback) can pull from the customer's own message,
+    // instead of leaving raw [NAME]/[ORDER_NUMBER]-style placeholders.
     setOverrideTemplateName(selectedTmpl.name);
+    let newBody = interpolateTemplateBody(selectedTmpl, selectedEmail);
+    try {
+      const fillRes = await fetch(`/api/inbox/${selectedEmail.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'FILL_TEMPLATE', templateId }),
+      });
+      const fillData = await fillRes.json();
+      if (fillData.success && fillData.responseBody) {
+        newBody = fillData.responseBody;
+      }
+    } catch (err) {
+      console.error('FILL_TEMPLATE failed, using local interpolation:', err);
+    }
+    setReplyText(newBody);
 
     // 2. Perform database edits sequentially to prevent race conditions
     await fetch(`/api/inbox/${selectedEmail.id}`, {

@@ -59,6 +59,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
 
         const parsed = await simpleParser(message.source);
         const senderEmail = parsed.from?.value[0]?.address || 'unknown@sender.com';
+        const senderName = parsed.from?.value[0]?.name?.trim() || null;
         const subject = parsed.subject || '(No Subject)';
         const body = parsed.text || '';
         const previewText = body.slice(0, 100) + (body.length > 100 ? '...' : '');
@@ -131,7 +132,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
 
           // 2. Process with AI Pipeline
           console.log(`Running AI classifications for live email ID ${newEmail.id}...`);
-          const aiResult = await runAIPipeline(newEmail.body, newEmail.subject, newEmail.sender, inbox.organizationId);
+          const aiResult = await runAIPipeline(newEmail.body, newEmail.subject, newEmail.sender, inbox.organizationId, senderName);
 
           // Spam is never surfaced in the inbox -- discard it outright.
           if (aiResult.spam) {
@@ -153,7 +154,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             : 'None';
 
           // 2b. Group this email under the sender's customer profile.
-          await upsertCustomerForEmail(inbox.organizationId, senderEmail, newEmail.id);
+          await upsertCustomerForEmail(inbox.organizationId, senderEmail, newEmail.id, senderName);
 
           // 2c. Duplicate-send prevention: same template already sent to
           // this sender within the last 24h -> force manual review.
