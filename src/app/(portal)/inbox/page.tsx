@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
@@ -383,6 +383,27 @@ export default function InboxPage() {
     }
   };
 
+  // A sender qualifies as a "Priority Sender" once they've emailed in 3+
+  // times -- one step above the existing "N emails from sender" pill (which
+  // already appears at totalEmails > 1), so the two badges don't overlap.
+  const FREQUENT_SENDER_THRESHOLD = 3;
+  const PRIORITY_RANK: Record<string, number> = { URGENT: 3, HIGH: 2, MEDIUM: 1, LOW: 0 };
+  const isPrioritySender = (email: any) => (email.customer?.totalEmails ?? 0) >= FREQUENT_SENDER_THRESHOLD;
+
+  // Presentation-only reordering on top of the API's createdAt-desc order:
+  // urgent/high-priority mail and frequent senders float to the top of
+  // whichever mailbox tab/filter is currently showing, newest-first within
+  // each group. Does not touch fetching, filtering, or the underlying data.
+  const sortedEmails = useMemo(() => {
+    return [...emails].sort((a: any, b: any) => {
+      const rankDiff = (PRIORITY_RANK[b.priority] ?? 0) - (PRIORITY_RANK[a.priority] ?? 0);
+      if (rankDiff !== 0) return rankDiff;
+      const priorityDiff = Number(isPrioritySender(b)) - Number(isPrioritySender(a));
+      if (priorityDiff !== 0) return priorityDiff;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, [emails]);
+
   const getSentimentColor = (s: string) => {
     switch (s) {
       case 'ANGRY': return 'text-red-400 font-bold';
@@ -643,7 +664,7 @@ export default function InboxPage() {
               No real data available yet.
             </div>
           ) : (
-            emails.map((email) => (
+            sortedEmails.map((email) => (
               <div
                 key={email.id}
                 onClick={() => selectEmail(email)}
@@ -700,6 +721,11 @@ export default function InboxPage() {
                   <span className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] text-gray-400">
                     {email.category}
                   </span>
+                  {isPrioritySender(email) && (
+                    <span className="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-[9px] text-amber-300 font-mono font-bold" title="This sender has emailed 3+ times -- respond promptly">
+                      PRIORITY SENDER
+                    </span>
+                  )}
                   {email.customer && email.customer.totalEmails > 1 && (
                     <span className="px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/20 text-[9px] text-cyan-300 font-mono" title="Total emails received from this sender">
                       {email.customer.totalEmails} emails from sender

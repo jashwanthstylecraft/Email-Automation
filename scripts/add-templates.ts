@@ -29,6 +29,16 @@ const NEW_TEMPLATE_KEYWORDS: Record<string, string[]> = {
   "Discount Code Not Working": ["discount code not working", "promo code", "coupon code", "code isn't working", "code not working", "code doesnt work"],
   "General Inquiry Acknowledgment": ["general inquiry", "general question"],
   "Out of Stock - No Restock Date (Next Drop TBD)": ["next drop tbd", "no restock date", "still out of stock", "everything is out of stock", "when will this be back in stock", "no eta on restock", "out of stock except"],
+  "Wrong Company - Not Our Product/Industry": ["wrong company", "reached the wrong company", "not the right company", "wrong business", "you have reached the wrong"],
+  "Redirect to Regional Team (UK)": ["uk team", "contact our uk team", "stylecraft uk", "reach the uk", "our uk distributor"],
+  "Part Not Currently Available (No Replacement)": ["part not available", "do not have the part available", "replacement part unavailable", "piece not available", "housing not available"],
+  "Return Reason Request": ["reason for your return", "reason for the return", "why are you returning", "want to return this"],
+  "Decline Unsolicited Sales / Marketing Pitch": ["contact list", "verified data", "attendees data", "visitor list", "seo rankings", "page of google", "marketplace experience"],
+  "Component Replacement Offered (Defective/Damaged Part)": ["send you a replacement", "happy to send you a", "magnetic shield", "shipping address to send"],
+  "Third-Party Marketplace Order (Redirect to Retailer)": ["third party platform", "tiktok shop", "ordered through amazon", "ordered through walmart", "fulfilled through", "marketplace order issue"],
+  "Accessories Not Covered Under Warranty": ["accessories not covered", "accessory warranty", "covered under warranty accessory", "warranty on accessories"],
+  "Instinct Trimmer Models - Price Difference": ["different in price", "why is this more expensive", "price difference instinct", "why are the two instinct"],
+  "Reissue Expired Return Shipping Label": ["shipping label expired", "is my return label still active", "reissue return label", "prepaid label expired", "label still active", "claim still open"],
 };
 
 function slugId(prefix: string, name: string): string {

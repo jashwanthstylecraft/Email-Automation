@@ -446,5 +446,45 @@
   {
     "name": "Out of Stock - No Restock Date (Next Drop TBD)",
     "body": "Thank you for reaching out, and we are sorry for the frustration! \"Next Drop TBD\" means that item is temporarily sold out and we do not have a confirmed restock date from our supplier yet.\n\nI have checked on [PRODUCT_NAME] for you and it is currently unavailable. If you let us know a specific alternative blade set or model you would consider, we would be happy to check whether that one is in stock right now, or add you to the notification list so you are emailed the moment it is back.\n\nWe know these sell out fast and we are working to get them restocked as soon as possible. Thank you for your patience, and have a great day!"
+  },
+  {
+    "name": "Wrong Company - Not Our Product/Industry",
+    "body": "Hi [NAME], it looks like you may have reached the wrong company. We manufacture and sell professional hair styling tools such as clippers, trimmers, and dryers under the StyleCraft and Gamma+ brands, and we are unable to assist with your request. We're sorry for the mix-up, but we wish you the best of luck. Have a great day!"
+  },
+  {
+    "name": "Redirect to Regional Team (UK)",
+    "body": "Good morning, you have reached Stylecraft North America. Here's the link to our UK team:\n\nhttps://stylecraftuk.co.uk/pages/contact\n\nHave a great day!"
+  },
+  {
+    "name": "Part Not Currently Available (No Replacement)",
+    "body": "Hi [NAME], thank you for reaching out. Unfortunately, we do not have the [PART_NAME] available as a standalone replacement part at this time. We apologize for the inconvenience, and if there's anything else we can assist with, please let us know. Have a great day!"
+  },
+  {
+    "name": "Return Reason Request",
+    "body": "Hi [NAME], thank you for reaching out. Could you please let us know the reason for your return? Once we have that, we'll be happy to get the return process started for you. Have a great day!"
+  },
+  {
+    "name": "Decline Unsolicited Sales / Marketing Pitch",
+    "body": "Hi [NAME], thank you for reaching out. We appreciate you thinking of us, but we are not interested in this opportunity at this time. Please remove us from any future outreach on this topic. Have a great day!"
+  },
+  {
+    "name": "Component Replacement Offered (Defective/Damaged Part)",
+    "body": "Hi [NAME], we'd be happy to send you a [PART_NAME] to resolve this at no cost. Could you please confirm a good shipping address so we can get that out to you? Have a great day!"
+  },
+  {
+    "name": "Third-Party Marketplace Order (Redirect to Retailer)",
+    "body": "Hi [NAME], We have reviewed your order, and it looks like it was fulfilled through a third-party marketplace (such as TikTok Shop, Amazon, or Walmart). Since the order was placed on that platform, please continue your communication with the retailer directly for further assistance with your return, refund, or replacement. Have a great day!"
+  },
+  {
+    "name": "Accessories Not Covered Under Warranty",
+    "body": "Hi [NAME], Thank you for reaching out. Please kindly note that accessories are generally not covered under warranty. Could you please confirm if there is any visible damage to the accessories? Have a great day!"
+  },
+  {
+    "name": "Instinct Trimmer Models - Price Difference",
+    "body": "Hi [NAME], Thank you for reaching out. We offer a few different Instinct trimmer models, which is why you may notice a difference in price between them. Each version varies in motor type and features. Please see the comparison links below, and let us know if you have any questions:\n\nhttps://stylecraftus.com/instinct-metal-trimmer-professional-hair-trimmer-with-vector-i-t-c-motor.html\nhttps://stylecraftus.com/instinct-professional-vector-motor-cordless-hair-trimmer-with-intuitive-torque-control.html\n\nHave a great day!"
+  },
+  {
+    "name": "Reissue Expired Return Shipping Label",
+    "body": "Hi [NAME], thank you for following up. I can confirm your claim for Order [ORDER_NUMBER] is still open. Let me check on your prepaid return shipping label and reissue it if it has expired -- you will receive an updated label shortly. Please ship the unit back as soon as you're able, and let us know if you don't see the new label within a couple of business days. Have a great day!"
   }
 ]
