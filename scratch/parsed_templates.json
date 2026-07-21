@@ -84,8 +84,12 @@
     "body": "Our website has to be \"in stock\" in order for y'all to pre order but in big letters we emphasize  that they are sold and will be shipping in December. Have a great day!"
   },
   {
+    "name": "Switch fix - 1 version",
+    "body": "Please follow the steps below.\n\n1. Take off the Clipper lid (3 screws on the front of clipper)\n2. You will then see 2 screws on the face of the switch. Please take the two screws off, take off the switch lid, and take out the switch lever piece with the metal conductor attached. It should look like the image below. \n\n3. Using a cloth or a brush thoroughly wipe the pieces of the switch so no hair interferes with the connection. If you see any product residue, please use alcohol/disinfectant to clean the surface.\n\nPlease ensure that the two switch screws are tightened before assembling it back into your clippers. \n\nIf this did not solve your issue, we'd be happy to send you a replacement switch, please let me know your shipping information."
+  },
+  {
     "name": "Switch fix - 2 versions",
-    "body": "Please follow the steps below.\n\n1. Take off the Clipper lid (3 screws on the front of clipper)\n2. You will then see 2 screws on the face of the switch. Please take the two screws off, take off the switch lid, and take out the switch lever piece with the metal conductor attached. It should look like the image below. \n\n\n\n3.Using a cloth or a brush thoroughly wipe the pieces of the switch so no hairs interfere with the connection. If you see any product residue, please use alcohol/disinfectant to clean the surface.\n\nPlease ensure that the two switch screws are tightened before assembling it back into your clippers. \n\nIf this did not solve your issue we'd be happy to send you a replacement switch, please let me know your shipping information. \n\nOR\n\nI am sorry to hear you are having this issue. However, We have a very simple and easy fix to this problem. Please follow the steps below.\n\n1. Take off the Clipper lid (3 screws on the front of clipper)\n2. You will then see 2 screws on the face of the switch Please ensure they are both tightened fully using a small phillips head screwdriver. \n3.Using a cloth or a brush thoroughly wipe the face of the switch so no hairs interfere with the connection. \n\nPlease be sure to fully disassemble the switch to clean it if tightening the screws does not solve the issue as there may be hair build up in the switch. \n\nDue to the vibration of the clipper these screws tend to come loose from time to time. Hair also tends to build up in the switch, causing the switch to malfunction. These steps solve the problem most of the time.\n\nIf this does not resolve the issue, we would be happy to send you a replacement switch. Please provide a good shipping address. \n\n\n1. Send you a new switch (we have a youtube video showing how to do it)  https://youtu.be/0oBFIOgiwQI  \nPreview YouTube video How to fix your switch\nHow to fix your switch\now to fix your swi"
+    "body": "I am sorry to hear you have this issue. However, we have a very simple and easy fix to this problem. Please follow the steps below.\n\n1. Take off the Clipper lid (3 screws on the front of clipper)\n2. You will then see 2 screws on the face of the switch Please ensure they are both tightened fully using a small Phillips head screwdriver. \n3. Using a cloth or a brush thoroughly wipe the face of the switch so no hair interferes with the connection. \n\nPlease be sure to fully disassemble the switch to clean it if tightening the screws does not solve the issue as there may be hair built up in the switch. \n\nDue to the vibration of the clipper these screws tend to come loose from time to time. Hair also tends to build up in the switch, causing the switch to malfunction. These steps solve the problem most of the time.\n\nIf this does not resolve the issue, we would be happy to send you a replacement switch. Please provide a good shipping address. \n\n1. Send you a new switch (we have a YouTube video showing how to do it)  https://youtu.be/0oBFIOgiwQI  \nPreview of YouTube video How to fix your switch\nHow to fix your switch"
   },
   {
     "name": "SENDING DISTRIBUTORS TO SC OUT OF US",
@@ -369,7 +373,11 @@
   },
   {
     "name": "Warranty Responses",
-    "body": "Hello,\nI hope this message finds you well. We would like to inform you that upon conducting a thorough inspection of your machine, we were unable to restore it to its specified performance, despite our best efforts.\nHowever, as part of our commitment to providing excellent service, we will be promptly shipping a brand new machine to the address you provided on the warranty form. Rest assured, you will receive tracking information as soon as it is dispatched.\nShould you have any further inquiries or require any assistance, please do not hesitate to contact us. \n\nOr\n\nI hope this message finds you well. We are pleased to inform you that our dedicated warranty team has successfully repaired your machine, and it will be shipped back to the address you provided on the warranty form. Rest assured, you will receive tracking information as soon as it is dispatched.\n\nIf you have any further inquiries or require any assistance, please do not hesitate to contact us. We are here to assist you in any way we can.\n\nThank you for choosing Stylecraft, and we wish you a wonderful day.\n\nBest Regards, Stylecraft Warranty Team"
+    "body": "Hello,\nI hope this message finds you well. We would like to inform you that upon conducting a thorough inspection of your machine, we were unable to restore it to its specified performance, despite our best efforts.\nHowever, as part of our commitment to providing excellent service, we will be promptly shipping a brand-new machine to the address you provided on the warranty form. Rest assured, you will receive tracking information as soon as it is dispatched.\nShould you have any further inquiries or require any assistance, please do not hesitate to contact us."
+  },
+  {
+    "name": "Warranty Responses 2",
+    "body": "I hope this message finds you well. We are pleased to inform you that our dedicated warranty team has successfully repaired your machine, and it will be shipped back to the address you provided on the warranty form. Rest assured, you will receive tracking information as soon as it is dispatched.\n\nIf you have any further inquiries or require any assistance, please do not hesitate to contact us. We are here to assist you in any way we can.\n\nThank you for choosing Stylecraft, and we wish you a wonderful day."
   },
   {
     "name": "Canadian Warehouse for Canada Warranties",
@@ -486,5 +494,9 @@
   {
     "name": "Reissue Expired Return Shipping Label",
     "body": "Hi [NAME], thank you for following up. I can confirm your claim for Order [ORDER_NUMBER] is still open. Let me check on your prepaid return shipping label and reissue it if it has expired -- you will receive an updated label shortly. Please ship the unit back as soon as you're able, and let us know if you don't see the new label within a couple of business days. Have a great day!"
+  },
+  {
+    "name": "BOLD ADDRESS",
+    "body": "Bold 3PL\n1529 E 17TH AVE\nHutchinson, KS 67501\ncustomerservice@boldcorporate.com"
   }
 ]

@@ -106,7 +106,10 @@ const ALL_TEMPLATE_KEYWORDS: Record<string, string[]> = {
   "Receive Fake Email for Partnership": ["fake email partnership", "partnership scam"],
   "Twist & Curl Fits": ["twist & curl fits", "twist and curl"],
   "Difference Between Clippers & Trimmers": ["clippers vs trimmers", "clipper vs trimmer"],
-  "Machine Heating Up - Internal Notes to Ask Customer": ["machine heating up", "heating up machine"]
+  "Machine Heating Up - Internal Notes to Ask Customer": ["machine heating up", "heating up machine"],
+  "BOLD ADDRESS": ["bold 3pl", "bold corporate", "boldcorporate.com"],
+  "Switch fix - 1 version": ["switch lid", "switch lever piece", "metal conductor switch"],
+  "Warranty Responses 2": ["machine successfully repaired", "repaired and shipped back", "warranty team repaired"]
 };
 
 export async function POST(request: Request) {
@@ -117,17 +120,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
     }
 
-    // 1. Read document content from disk or database
+    // 1. Read document content -- the document the user actually picked
+    // always wins. The hardcoded local text file is only a fallback for the
+    // Knowledge page's empty-state "bootstrap" button (which calls this
+    // endpoint with no documentId at all); it must never override a real
+    // uploaded document's content.
     let extractedText = '';
-    const textFilePath = 'C:\\ANTIGRAVITY\\EMAIL AUTOMATION\\scratch\\extracted_text.txt';
-    if (fs.existsSync(textFilePath)) {
-      extractedText = fs.readFileSync(textFilePath, 'utf-8');
-    }
 
-    if (!extractedText && documentId) {
+    if (documentId) {
       const doc = await prisma.document.findUnique({ where: { id: documentId } });
       if (doc) {
         extractedText = doc.content;
+      }
+    }
+
+    if (!extractedText) {
+      const textFilePath = 'C:\\ANTIGRAVITY\\EMAIL AUTOMATION\\scratch\\extracted_text.txt';
+      if (fs.existsSync(textFilePath)) {
+        extractedText = fs.readFileSync(textFilePath, 'utf-8');
       }
     }
 
@@ -140,13 +150,19 @@ export async function POST(request: Request) {
     const requestedTemplateTitles = Object.keys(ALL_TEMPLATE_KEYWORDS);
     const headerLocations: { name: string; lineIndex: number }[] = [];
 
+    // Strip quotes AND a trailing period -- reference docs often punctuate
+    // headings ("Switch fix - 1 version.") while the stored template name
+    // doesn't, which otherwise defeats both the exact-match and
+    // substring-fallback checks below.
+    const normalize = (s: string) => s.replace(/[“”"']/g, '').replace(/\.$/, '').toLowerCase().trim();
+
     for (const name of requestedTemplateTitles) {
-      const normName = name.replace(/[“”"']/g, '').toLowerCase().trim();
+      const normName = normalize(name);
       let bestIdx = -1;
-      
+
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
-        const normLine = line.replace(/[“”"']/g, '').toLowerCase().trim();
+        const normLine = normalize(line);
         if (normLine === normName) {
           bestIdx = i;
           break;
@@ -156,7 +172,7 @@ export async function POST(request: Request) {
       if (bestIdx === -1) {
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i].trim();
-          const normLine = line.replace(/[“”"']/g, '').toLowerCase().trim();
+          const normLine = normalize(line);
           if (normLine.length > 5 && normName.includes(normLine)) {
             bestIdx = i;
             break;
@@ -216,15 +232,18 @@ export async function POST(request: Request) {
       });
       createdTemplatesCount++;
 
-      // Create or Update Rule matching keywords
+      // Create or Update Rule matching keywords -- every phrase is checked
+      // against BOTH the subject and the body, so a customer who puts the
+      // whole question in the subject line still triggers the right
+      // template (matches the twin-condition shape used everywhere else,
+      // e.g. scripts/add-templates.ts's buildRuleConditions).
       const keywords = ALL_TEMPLATE_KEYWORDS[current.name] || [current.name.toLowerCase()];
       const conditionsGroup = {
         logic: 'OR',
-        rules: keywords.map(kw => ({
-          field: 'body',
-          operator: 'contains',
-          value: kw
-        }))
+        rules: keywords.flatMap(kw => [
+          { field: 'subject', operator: 'contains', value: kw },
+          { field: 'body', operator: 'contains', value: kw },
+        ])
       };
 
       const action = {

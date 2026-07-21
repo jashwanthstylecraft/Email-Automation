@@ -125,7 +125,10 @@ const ALL_TEMPLATE_KEYWORDS: Record<string, string[]> = {
   "Third-Party Marketplace Order (Redirect to Retailer)": ["third party platform", "tiktok shop", "ordered through amazon", "ordered through walmart", "fulfilled through", "marketplace order issue"],
   "Accessories Not Covered Under Warranty": ["accessories not covered", "accessory warranty", "covered under warranty accessory", "warranty on accessories"],
   "Instinct Trimmer Models - Price Difference": ["different in price", "why is this more expensive", "price difference instinct", "why are the two instinct"],
-  "Reissue Expired Return Shipping Label": ["shipping label expired", "is my return label still active", "reissue return label", "prepaid label expired", "label still active", "claim still open"]
+  "Reissue Expired Return Shipping Label": ["shipping label expired", "is my return label still active", "reissue return label", "prepaid label expired", "label still active", "claim still open"],
+  "BOLD ADDRESS": ["bold 3pl", "bold corporate", "boldcorporate.com"],
+  "Switch fix - 1 version": ["switch lid", "switch lever piece", "metal conductor switch"],
+  "Warranty Responses 2": ["machine successfully repaired", "repaired and shipped back", "warranty team repaired"]
 };
 
 async function main() {
