@@ -22,9 +22,11 @@ const FALLBACK_RESPONSE = "Thank you for contacting StyleCraft Support. We have 
 
 // Kept short and reply-focused on purpose -- classification (language,
 // category, sentiment, urgency, priority) is handled by free local
-// heuristics below, never by the API, so this prompt only has to do one
-// job: draft a brief reply when nothing in the template library matches.
-const ANALYSIS_SYSTEM_PROMPT = "You are an email assistant. Analyse the subject and brief content. Match to existing templates or suggest a short reply. Be concise. Max 3 sentences.";
+// heuristics below, never by the API, and template matching always runs
+// before this is ever reached, so this prompt only has one job: draft a
+// brief reply for the remaining case (nothing in the template library
+// matched).
+const ANALYSIS_SYSTEM_PROMPT = "You are a professional email assistant. Based on this email subject and message, write a short, professional reply in max 3 sentences.";
 
 /**
  * Checks if this email is a duplicate of a recent email from the same sender.
@@ -272,6 +274,38 @@ export async function runKeywordMatcher(
 }
 
 /**
+ * The system prompt above asks for "a short, professional reply", which the
+ * model tends to interpret as a full email complete with its own greeting
+ * ("Dear [Customer],") and sign-off ("Best regards,\n[Your Name]"). Those
+ * are generic placeholders the model invented, not real values -- left
+ * alone they'd leak a literal "[Customer]"/"[Your Name]" into the draft AND
+ * collide with wrapResponseWithGreetingAndClosing's own (correct, real-name)
+ * greeting/closing, producing a duplicated sign-off. Strip them so that
+ * function is the single source of truth for how the draft opens and ends.
+ */
+function stripAIOwnFraming(text: string): string {
+  let lines = text.split('\n');
+
+  const isGreetingLine = (l: string) => /^(dear|hi|hello)\b.*,?\s*$/i.test(l.trim());
+  const isSignOffLine = (l: string) => /^(best regards|kind regards|warm regards|regards|sincerely|thank you|thanks)\b,?\s*$/i.test(l.trim());
+
+  while (lines.length && lines[0].trim() === '') lines.shift();
+  if (lines.length && isGreetingLine(lines[0])) {
+    lines.shift();
+    while (lines.length && lines[0].trim() === '') lines.shift();
+  }
+
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  const signOffIdx = lines.findIndex((l, i) => i >= lines.length - 3 && isSignOffLine(l));
+  if (signOffIdx !== -1) {
+    lines = lines.slice(0, signOffIdx);
+    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  }
+
+  return lines.join('\n').trim();
+}
+
+/**
  * Single OpenAI call for one email that matched no template -- minimal
  * context (subject + first 100 words), short output (max_tokens capped),
  * using the one shared client from src/lib/openai-client.ts.
@@ -283,12 +317,12 @@ export async function generateReplyWithAI(subject: string, briefBody: string): P
     temperature: OPENAI_TEMPERATURE,
     messages: [
       { role: 'system', content: ANALYSIS_SYSTEM_PROMPT },
-      { role: 'user', content: `Subject: ${subject}\n\n${briefBody}` },
+      { role: 'user', content: `Subject: ${subject}\nMessage: ${briefBody}` },
     ],
   });
   const text = completion.choices[0]?.message?.content;
   if (!text) throw new Error('OpenAI returned an empty response');
-  return text.trim();
+  return stripAIOwnFraming(text.trim());
 }
 
 /**
@@ -304,7 +338,7 @@ export async function generateRepliesBatch(items: { subject: string; briefBody: 
     return [await generateReplyWithAI(items[0].subject, items[0].briefBody)];
   }
 
-  const numberedList = items.map((it, i) => `${i + 1}. Subject: ${it.subject}\n${it.briefBody}`).join('\n\n');
+  const numberedList = items.map((it, i) => `${i + 1}. Subject: ${it.subject}\nMessage: ${it.briefBody}`).join('\n\n');
   const completion = await openai.chat.completions.create({
     model: OPENAI_MODEL,
     max_tokens: Math.min(OPENAI_MAX_TOKENS * items.length, 1200),
@@ -325,7 +359,7 @@ export async function generateRepliesBatch(items: { subject: string; briefBody: 
   if (replies.length !== items.length) {
     throw new Error(`Expected ${items.length} batched replies, got ${replies.length}`);
   }
-  return replies;
+  return replies.map((r: string) => stripAIOwnFraming(String(r)));
 }
 
 interface ClassifiedEmail {

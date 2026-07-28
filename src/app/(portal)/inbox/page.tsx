@@ -8,7 +8,7 @@ import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame,
   Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote
 } from 'lucide-react';
-import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
+import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
 import { BentoSection, BentoCard } from '@/components/MagicBento';
 
 export default function InboxPage() {
@@ -329,6 +329,45 @@ export default function InboxPage() {
       fetchTemplates();
       await fetchDashboard();
     }
+  };
+
+  // No template matched this email, so the draft was AI-generated from
+  // scratch (see src/lib/ai-pipeline.ts -- aiProvider starts with "OpenAI").
+  // Offer to promote that reply into a reusable template so future emails
+  // like it get matched for free next time instead of costing another call.
+  const handleSaveAsNewTemplate = async () => {
+    if (!selectedEmail || selectedEmail.matchedTemplateId) return;
+
+    const defaultName = selectedEmail.subject?.slice(0, 60) || 'New Template';
+    const name = window.prompt('Save this AI-generated reply as a new template. Template name:', defaultName);
+    if (!name || !name.trim()) return;
+
+    const trimmedName = name.trim();
+    const structuredKeywords = extractKeywordsForTemplate(trimmedName, replyText);
+
+    await saveTemplate({
+      name: trimmedName,
+      subject: `Regarding your StyleCraft inquiry: ${trimmedName}`,
+      body: replyText,
+      variables: 'customer_name,closing',
+      keywords: serializeKeywords(structuredKeywords),
+      active: true,
+      notes: `Created from an AI-generated reply on ${new Date().toISOString().slice(0, 10)}.`,
+    });
+
+    await fetch(`/api/inbox/${selectedEmail.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'SUBMIT_FEEDBACK',
+        feedbackType: 'Saved AI Reply as New Template',
+        feedbackNotes: `Created new template "${trimmedName}" from an AI-generated draft.`,
+      }),
+    });
+
+    showSendToast(`Saved as new template: "${trimmedName}"`);
+    await fetchTemplates();
+    await fetchDashboard();
   };
 
   const handleResetToTemplate = () => {
@@ -1157,14 +1196,18 @@ export default function InboxPage() {
                           <button onClick={handleSaveDraft} className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer">
                             Save Edits
                           </button>
-                          {selectedEmail.matchedTemplateId && (
-                            <button onClick={handleSaveTemplateUpdate} className="text-xs text-violet-300 hover:text-violet-200 font-semibold flex items-center gap-1 cursor-pointer">
-                              <Save className="w-3 h-3" /> Update Response Template
-                            </button>
-                          )}
-                          {selectedEmail.matchedTemplateId && (
-                            <button onClick={handleResetToTemplate} className="text-xs text-amber-300 hover:text-amber-200 font-semibold cursor-pointer">
-                              Reset to Template
+                          {selectedEmail.matchedTemplateId ? (
+                            <>
+                              <button onClick={handleSaveTemplateUpdate} className="text-xs text-violet-300 hover:text-violet-200 font-semibold flex items-center gap-1 cursor-pointer">
+                                <Save className="w-3 h-3" /> Update Response Template
+                              </button>
+                              <button onClick={handleResetToTemplate} className="text-xs text-amber-300 hover:text-amber-200 font-semibold cursor-pointer">
+                                Reset to Template
+                              </button>
+                            </>
+                          ) : (
+                            <button onClick={handleSaveAsNewTemplate} className="text-xs text-emerald-300 hover:text-emerald-200 font-semibold flex items-center gap-1 cursor-pointer">
+                              <Save className="w-3 h-3" /> Save as New Template
                             </button>
                           )}
                           <button onClick={() => { setReplyText(latestDraft.responseBody); setIsEditingDraft(false); }} className="text-xs text-gray-400 hover:text-white font-semibold cursor-pointer">
