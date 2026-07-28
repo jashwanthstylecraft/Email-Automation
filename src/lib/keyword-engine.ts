@@ -89,7 +89,7 @@ const INTENT_TERMS = [
 const STOPWORDS = new Set(['and', 'the', 'for', 'with', 'your', 'about', 'this', 'that', 'from',
   'have', 'been', 'will', 'are', 'not', 'but', 'out', 'you', 'why', 'did', 'send', 'does', 'was',
   'were', 'has', 'had', 'can', 'could', 'would', 'should', 'a', 'an', 'is', 'it', 'in', 'on', 'to',
-  'of', 'or', 'if', 'my', 'me', 'i']);
+  'of', 'or', 'if', 'my', 'me', 'i', 'at']);
 
 function cleanTitle(name: string): string {
   return name.toLowerCase().replace(/[“”"']/g, '').replace(/[^a-z0-9\s&/-]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -196,8 +196,6 @@ export interface ScoredTemplate {
   disqualified: boolean;
 }
 
-const MIN_TITLE_WORDS_FOR_STRONG_MATCH = 2;
-
 function phraseMatches(text: string, phrase: string): boolean {
   if (!phrase || phrase.length < 2) return false;
   if (text.includes(phrase)) return true;
@@ -208,11 +206,40 @@ function phraseMatches(text: string, phrase: string): boolean {
   return false;
 }
 
+/**
+ * Cleans and tokenizes raw email text (subject + body) into a set of
+ * individual meaningful words: lowercase, strip punctuation/special
+ * characters, split on whitespace, drop stop words. This is what an
+ * incoming email is reduced to before it's compared against a template's
+ * keyword list -- a true word-by-word "bag of words", not substring search.
+ */
+export function tokenizeEmailText(text: string): Set<string> {
+  const cleaned = text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+  const words = cleaned.split(/\s+/).filter(w => w.length >= 3 && !STOPWORDS.has(w));
+  return new Set(words);
+}
+
+/**
+ * Every keyword tier EXCEPT `negative` (a disqualifier, not a positive
+ * signal) flattened into one plain list -- the "keywords: [...]" per
+ * template the matching algorithm actually compares against.
+ */
+export function flattenTemplateKeywords(kw: StructuredKeywords): string[] {
+  return Array.from(new Set([...kw.primary, ...kw.secondary, ...kw.product, ...kw.problem, ...kw.intent]
+    .map(k => k.trim().toLowerCase())
+    .filter(Boolean)));
+}
+
+/**
+ * Percentage-based keyword-overlap scoring:
+ *   matchScore = (number of matching keywords / total keywords in template) * 100
+ * A multi-word keyword phrase ("blade gets hot") counts as matched only when
+ * EVERY one of its words is present in the (cleaned, tokenized) email text --
+ * comparing every word, not just a loose substring check.
+ */
 export function scoreTemplate(template: TemplateForScoring, emailText: string): ScoredTemplate {
   const text = emailText.toLowerCase();
   const kw = template.keywords;
-  let score = 0;
-  const matchedTerms: string[] = [];
 
   // Negative keywords disqualify this template outright -- used to
   // disambiguate near-duplicate templates (e.g. don't suggest "Blade Gets
@@ -222,49 +249,29 @@ export function scoreTemplate(template: TemplateForScoring, emailText: string): 
     return { templateId: template.id, name: template.name, score: -1, matchedTerms: [], disqualified: true };
   }
 
-  // Exact template title match -- strongest possible signal, but only when
-  // the title itself is specific (multi-word). A single generic word title
-  // ("Netherlands") coincidentally appearing in an email is not real evidence.
-  const titleWords = meaningfulWords(cleanTitle(template.name));
-  if (titleWords.length >= MIN_TITLE_WORDS_FOR_STRONG_MATCH && text.includes(cleanTitle(template.name))) {
-    score += 50;
-    matchedTerms.push(template.name);
+  const templateKeywords = flattenTemplateKeywords(kw);
+  if (templateKeywords.length === 0) {
+    return { templateId: template.id, name: template.name, score: 0, matchedTerms: [], disqualified: false };
   }
 
-  const scoreGroup = (terms: string[], weight: number, cap: number) => {
-    let added = 0;
-    for (const term of terms) {
-      if (added >= cap) break;
-      if (phraseMatches(text, term)) {
-        score += weight;
-        matchedTerms.push(term);
-        added += weight;
-      }
-    }
-  };
+  const emailWords = tokenizeEmailText(text);
+  const matchedTerms = templateKeywords.filter(term => {
+    const termWords = term.split(/\s+/).filter(Boolean);
+    // A term word might itself have been stripped by the tokenizer's
+    // stopword/length filter (short product codes, etc.) -- fall back to a
+    // raw substring check for those so real matches aren't lost.
+    return termWords.length > 0 && termWords.every(w => emailWords.has(w) || text.includes(w));
+  });
 
-  scoreGroup(kw.primary, 22, 44);
-  scoreGroup(kw.intent, 22, 44);
-  scoreGroup(kw.secondary, 10, 20);
-  // Bare product words are ambiguous on their own (many templates share
-  // "blade"), so they carry the least weight -- they nudge the ranking,
-  // they don't drive it alone. Problem phrases are often multi-word and
-  // fairly specific ("never got it", "says delivered") even without a
-  // product word alongside them, so two independent problem-phrase hits
-  // are enough to clear the match threshold on their own.
-  scoreGroup(kw.product, 8, 16);
-  scoreGroup(kw.problem, 10, 20);
+  const score = (matchedTerms.length / templateKeywords.length) * 100;
 
-  return { templateId: template.id, name: template.name, score, matchedTerms: Array.from(new Set(matchedTerms)), disqualified: false };
+  return { templateId: template.id, name: template.name, score, matchedTerms, disqualified: false };
 }
 
-// Minimum total score to accept a match at all. Below this, the signal is
-// too weak/coincidental to be trusted -- correctly returns "no match"
-// instead of confidently picking the wrong template. Set just below a
-// single strong intent/primary hit (22) so one clear, specific signal
-// ("I want to return this" -> "return") is enough, but two-plus weak bare
-// product/problem words (8 each) still aren't, on their own.
-export const MIN_MATCH_SCORE = 20;
+// Only accept a match when its percentage score is strictly above 30% --
+// below that, the overlap is too thin to trust over a manual/AI-drafted
+// reply.
+export const MIN_MATCH_SCORE = 30;
 
 export interface MatchResult {
   matchedTemplateId: string | null;
@@ -274,8 +281,10 @@ export interface MatchResult {
   suggestions: { templateId: string; name: string; score: number; confidence: number }[];
 }
 
+// Score is already a 0-100 percentage; map it onto the confidence range the
+// rest of the app expects (Email.aiConfidence, UI thresholds, etc.).
 function scoreToConfidence(score: number): number {
-  return Math.max(0.3, Math.min(0.97, score / 70));
+  return Math.max(0.3, Math.min(0.97, score / 100));
 }
 
 export function matchTemplates(templates: TemplateForScoring[], subject: string, body: string): MatchResult {
@@ -284,11 +293,9 @@ export function matchTemplates(templates: TemplateForScoring[], subject: string,
     .filter(t => t.active !== false)
     .map(t => scoreTemplate(t, emailText))
     .filter(s => !s.disqualified)
-    // On a tied score, prefer the shorter/more generic title -- a more
-    // specific variant ("Exceed Return Period") should only outrank the
-    // generic default ("Returns") when it has genuinely extra matching
-    // signal, not just the same single shared word.
-    .sort((a, b) => b.score - a.score || a.name.length - b.name.length);
+    // Rank by match score first; on a tie, the template with more total
+    // keyword matches wins (not just a higher percentage off a shorter list).
+    .sort((a, b) => b.score - a.score || b.matchedTerms.length - a.matchedTerms.length);
 
   const suggestions = scored.slice(0, 3).map(s => ({
     templateId: s.templateId,
@@ -298,11 +305,11 @@ export function matchTemplates(templates: TemplateForScoring[], subject: string,
   }));
 
   const best = scored[0];
-  if (!best || best.score < MIN_MATCH_SCORE) {
+  if (!best || best.score <= MIN_MATCH_SCORE) {
     return {
       matchedTemplateId: null,
       confidenceScore: 0,
-      matchReason: 'No approved template scored above the match threshold',
+      matchReason: 'No approved template scored above the 30% match threshold',
       matchedTerms: [],
       suggestions,
     };
@@ -311,7 +318,7 @@ export function matchTemplates(templates: TemplateForScoring[], subject: string,
   return {
     matchedTemplateId: best.templateId,
     confidenceScore: scoreToConfidence(best.score),
-    matchReason: `matched on: ${best.matchedTerms.slice(0, 3).join(', ')}`,
+    matchReason: `matched ${best.matchedTerms.length} keyword(s) (${Math.round(best.score)}%): ${best.matchedTerms.slice(0, 3).join(', ')}`,
     matchedTerms: best.matchedTerms,
     suggestions,
   };
