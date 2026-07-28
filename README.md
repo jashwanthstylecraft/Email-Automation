@@ -3,7 +3,7 @@
 Intelligent SaaS platform that monitors an organization's support mailbox, runs incoming messages through a local RAG knowledge pipeline and LLM processing engine, and automatically drafts or sends context-aware replies based on visual automation rules.
 
 ---
-
+ 
 ## Key Features
 
 1. **AI Processing Pipeline**: Integrates language detection, category tagging (Billing, Tech support, HR, Sales, etc.), sentiment categorization (Neutral, Positive, Angry), urgency detection, spam classification, and duplicate checks.
