@@ -2,15 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
-import { 
-  Sliders, Plus, Trash2, ToggleLeft, ToggleRight, Check, X, 
+import {
+  Sliders, Plus, Trash2, ToggleLeft, ToggleRight, Check, X,
   HelpCircle, SlidersHorizontal, ArrowRight, Play, Info
 } from 'lucide-react';
 
 export default function RulesPage() {
-  const { 
-    rules, templates, fetchRules, fetchTemplates, 
-    saveRule, deleteRule, user 
+  const {
+    rules, templates, fetchRules, fetchTemplates,
+    saveRule, deleteRule, user
   } = useStore();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -97,14 +97,14 @@ export default function RulesPage() {
       const cond = JSON.parse(conditionsJson);
       return cond.rules.map((r: any, idx: number) => (
         <span key={idx}>
-          {idx > 0 && <span className="text-violet-400 font-bold mx-1">AND</span>}
-          <span className="text-gray-300 font-medium">{r.field}</span>{' '}
-          <span className="text-gray-500 font-mono text-[10px]">{r.operator}</span>{' '}
-          <span className="text-violet-300 font-semibold">"{r.value}"</span>
+          {idx > 0 && <span className="text-accent-text font-bold mx-1">AND</span>}
+          <span className="text-text-secondary font-medium">{r.field}</span>{' '}
+          <span className="text-text-muted font-mono text-[10px]">{r.operator}</span>{' '}
+          <span className="text-accent-text font-semibold">"{r.value}"</span>
         </span>
       ));
     } catch (e) {
-      return <span className="text-red-400">Malformed conditions</span>;
+      return <span className="text-danger">Malformed conditions</span>;
     }
   };
 
@@ -114,7 +114,7 @@ export default function RulesPage() {
       if (act.actionType === 'ESCALATE') {
         return (
           <span>
-            Escalate to <span className="text-red-400 font-semibold">{act.assignee || 'Jane Doe'}</span> (Priority: URGENT)
+            Escalate to <span className="text-danger font-semibold">{act.assignee || 'Jane Doe'}</span> (Priority: URGENT)
           </span>
         );
       }
@@ -123,18 +123,18 @@ export default function RulesPage() {
       return (
         <span className="space-y-1.5 block">
           <span>
-            {actionLabel} using <span className="text-emerald-400 font-semibold">{template?.name || 'Policy Template'}</span>
+            {actionLabel} using <span className="text-success font-semibold">{template?.name || 'Policy Template'}</span>
           </span>
-          <span className="flex items-center gap-3 text-[10px] text-gray-500 font-mono flex-wrap pt-1.5 border-t border-white/5 mt-1.5">
-            <span>Confidence Min: <strong className="text-violet-400">{(act.confidenceThreshold * 100).toFixed(0)}%</strong></span>
-            <span>Auto-Draft: <strong className="text-violet-400">{act.autoDraft ? 'Yes' : 'No'}</strong></span>
-            <span>Auto-Send: <strong className="text-violet-400">{act.autoSend ? 'Yes' : 'No'}</strong></span>
-            <span>Review Fallback: <strong className="text-violet-400">{act.manualReviewFallback ? 'Yes' : 'No'}</strong></span>
+          <span className="flex items-center gap-3 text-[10px] text-text-muted font-mono flex-wrap pt-1.5 border-t border-border mt-1.5">
+            <span>Confidence Min: <strong className="text-accent-text">{(act.confidenceThreshold * 100).toFixed(0)}%</strong></span>
+            <span>Auto-Draft: <strong className="text-accent-text">{act.autoDraft ? 'Yes' : 'No'}</strong></span>
+            <span>Auto-Send: <strong className="text-accent-text">{act.autoSend ? 'Yes' : 'No'}</strong></span>
+            <span>Review Fallback: <strong className="text-accent-text">{act.manualReviewFallback ? 'Yes' : 'No'}</strong></span>
           </span>
         </span>
       );
     } catch (e) {
-      return <span className="text-red-400">Malformed actions</span>;
+      return <span className="text-danger">Malformed actions</span>;
     }
   };
 
@@ -143,10 +143,10 @@ export default function RulesPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight text-text-primary flex items-center gap-2">
             Automation Rules
           </h1>
-          <p className="text-gray-400 text-xs mt-1">
+          <p className="text-text-secondary text-xs mt-1">
             Build triggers to automatically route, categorize, reply, or escalate incoming messages.
           </p>
         </div>
@@ -154,7 +154,7 @@ export default function RulesPage() {
         {!isFormOpen && (
           <button
             onClick={() => setIsFormOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-xs font-semibold rounded-lg text-white transition-all cursor-pointer shadow-lg shadow-violet-600/10 hover:shadow-violet-600/25"
+            className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover text-xs font-semibold rounded-lg text-white transition-all cursor-pointer shadow-lg shadow-accent/10 hover:shadow-accent/25"
           >
             <Plus className="w-4 h-4" />
             Create Custom Rule
@@ -164,15 +164,15 @@ export default function RulesPage() {
 
       {/* Rules Builder Form */}
       {isFormOpen && (
-        <div className="glass-panel p-6 rounded-xl border border-violet-500/20 bg-violet-950/5 space-y-6">
-          <div className="flex justify-between items-center pb-3 border-b border-white/5">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <SlidersHorizontal className="w-4 h-4 text-violet-400" />
+        <div className="glass-panel p-6 rounded-xl border border-accent-border bg-accent-bg space-y-6">
+          <div className="flex justify-between items-center pb-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+              <SlidersHorizontal className="w-4 h-4 text-accent-text" />
               Configure New Automation Rule
             </h3>
-            <button 
+            <button
               onClick={() => setIsFormOpen(false)}
-              className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-colors cursor-pointer"
+              className="p-1 hover:bg-surface-3 rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -182,23 +182,23 @@ export default function RulesPage() {
             {/* Rule Name */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Rule Name</label>
+                <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Rule Name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Out of Warranty Rule"
                   value={ruleName}
                   onChange={(e) => setRuleName(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500 transition-colors"
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent transition-colors"
                 />
               </div>
               <div className="flex items-end h-full">
                 <button
                   type="button"
                   onClick={() => setActive(!active)}
-                  className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg transition-colors cursor-pointer text-gray-300 font-semibold"
+                  className="flex items-center gap-2 px-3 py-2 bg-surface-2 border border-border hover:border-border-strong rounded-lg transition-colors cursor-pointer text-text-secondary font-semibold"
                 >
-                  {active ? <ToggleRight className="w-5 h-5 text-emerald-400" /> : <ToggleLeft className="w-5 h-5 text-gray-500" />}
+                  {active ? <ToggleRight className="w-5 h-5 text-success" /> : <ToggleLeft className="w-5 h-5 text-text-muted" />}
                   Rule Active Status
                 </button>
               </div>
@@ -206,16 +206,16 @@ export default function RulesPage() {
 
             {/* Condition: IF */}
             <div className="space-y-3">
-              <span className="px-2 py-0.5 rounded bg-violet-600/20 text-[10px] font-bold text-violet-300 uppercase tracking-wider">
+              <span className="px-2 py-0.5 rounded bg-accent-bg text-[10px] font-bold text-accent-text uppercase tracking-wider">
                 IF (Condition)
               </span>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-black/20 p-4 rounded-xl border border-white/5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-surface-3 p-4 rounded-xl border border-border">
                 <div>
-                  <label className="block text-gray-500 mb-1.5 font-medium">Field</label>
+                  <label className="block text-text-muted mb-1.5 font-medium">Field</label>
                   <select
                     value={condField}
                     onChange={(e) => setCondField(e.target.value as any)}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-gray-300 outline-none focus:border-violet-500 cursor-pointer"
+                    className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-secondary outline-none focus:border-accent cursor-pointer"
                   >
                     <option value="category">Category</option>
                     <option value="sentiment">Sentiment</option>
@@ -226,11 +226,11 @@ export default function RulesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-gray-500 mb-1.5 font-medium">Operator</label>
+                  <label className="block text-text-muted mb-1.5 font-medium">Operator</label>
                   <select
                     value={condOperator}
                     onChange={(e) => setCondOperator(e.target.value as any)}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-gray-300 outline-none focus:border-violet-500 cursor-pointer"
+                    className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-secondary outline-none focus:border-accent cursor-pointer"
                   >
                     <option value="equals">Equals</option>
                     <option value="not_equals">Does Not Equal</option>
@@ -240,14 +240,14 @@ export default function RulesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-gray-500 mb-1.5 font-medium">Matching Value</label>
+                  <label className="block text-text-muted mb-1.5 font-medium">Matching Value</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Billing, urgent, double charge"
                     value={condValue}
                     onChange={(e) => setCondValue(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500"
+                    className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent"
                   />
                 </div>
               </div>
@@ -255,16 +255,16 @@ export default function RulesPage() {
 
             {/* Action: THEN */}
             <div className="space-y-3">
-              <span className="px-2 py-0.5 rounded bg-emerald-600/20 text-[10px] font-bold text-emerald-300 uppercase tracking-wider">
+              <span className="px-2 py-0.5 rounded bg-success-bg text-[10px] font-bold text-success uppercase tracking-wider">
                 THEN (Action)
               </span>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-black/20 p-4 rounded-xl border border-white/5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-surface-3 p-4 rounded-xl border border-border">
                 <div>
-                  <label className="block text-gray-500 mb-1.5 font-medium">Action Dispatch</label>
+                  <label className="block text-text-muted mb-1.5 font-medium">Action Dispatch</label>
                   <select
                     value={actionType}
                     onChange={(e) => setActionType(e.target.value as any)}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-gray-300 outline-none focus:border-violet-500 cursor-pointer"
+                    className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-secondary outline-none focus:border-accent cursor-pointer"
                   >
                     <option value="AUTO_REPLY">Send Auto-Reply Immediately</option>
                     <option value="REPLY_TEMPLATE">Draft Auto-Reply & Request Approval</option>
@@ -275,12 +275,12 @@ export default function RulesPage() {
                 {actionType !== 'ESCALATE' ? (
                   <>
                     <div>
-                      <label className="block text-gray-500 mb-1.5 font-medium">Select Template</label>
+                      <label className="block text-text-muted mb-1.5 font-medium">Select Template</label>
                       <select
                         value={selectedTemplateId}
                         required
                         onChange={(e) => setSelectedTemplateId(e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-gray-300 outline-none focus:border-violet-500 cursor-pointer"
+                        className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-secondary outline-none focus:border-accent cursor-pointer"
                       >
                         <option value="">-- Choose Template --</option>
                         {templates.map((t) => (
@@ -290,11 +290,11 @@ export default function RulesPage() {
                     </div>
 
                     <div>
-                      <label className="block text-gray-500 mb-1.5 font-medium">Target Inbox Status</label>
+                      <label className="block text-text-muted mb-1.5 font-medium">Target Inbox Status</label>
                       <select
                         value={selectedStatus}
                         onChange={(e) => setSelectedStatus(e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-gray-300 outline-none focus:border-violet-500 cursor-pointer"
+                        className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-secondary outline-none focus:border-accent cursor-pointer"
                       >
                         <option value="WAITING">WAITING APPROVAL</option>
                         <option value="REPLIED">REPLIED</option>
@@ -304,14 +304,14 @@ export default function RulesPage() {
                   </>
                 ) : (
                   <div>
-                    <label className="block text-gray-500 mb-1.5 font-medium">Assignee Agent Email</label>
+                    <label className="block text-text-muted mb-1.5 font-medium">Assignee Agent Email</label>
                     <input
                       type="email"
                       required
                       placeholder="e.g. jane@stylecraftus.com"
                       value={assignee}
                       onChange={(e) => setAssignee(e.target.value)}
-                      className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500"
+                      className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent"
                     />
                   </div>
                 )}
@@ -321,60 +321,60 @@ export default function RulesPage() {
             {/* Confidence & Routing Options */}
             {actionType !== 'ESCALATE' && (
               <div className="space-y-3">
-                <span className="px-2 py-0.5 rounded bg-violet-600/20 text-[10px] font-bold text-violet-300 uppercase tracking-wider">
+                <span className="px-2 py-0.5 rounded bg-accent-bg text-[10px] font-bold text-accent-text uppercase tracking-wider">
                   Confidence & Routing Tuning
                 </span>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-black/20 p-4 rounded-xl border border-white/5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-surface-3 p-4 rounded-xl border border-border">
                   <div className="space-y-2">
                     <div className="flex justify-between">
-                      <label className="font-semibold text-gray-400 uppercase tracking-wider">Confidence Threshold</label>
-                      <span className="font-mono text-violet-400 font-bold">{confidenceThreshold}%</span>
+                      <label className="font-semibold text-text-secondary uppercase tracking-wider">Confidence Threshold</label>
+                      <span className="font-mono text-accent-text font-bold">{confidenceThreshold}%</span>
                     </div>
-                    <input 
-                      type="range" 
-                      min="10" 
-                      max="100" 
+                    <input
+                      type="range"
+                      min="10"
+                      max="100"
                       value={confidenceThreshold}
                       onChange={(e) => setConfidenceThreshold(parseInt(e.target.value))}
-                      className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                      className="w-full h-1.5 bg-surface-3 rounded-lg appearance-none cursor-pointer accent-accent"
                     />
-                    <span className="text-[10px] text-gray-500 block">
+                    <span className="text-[10px] text-text-muted block">
                       Minimum AI certainty before this template is matched to create draft responses.
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="checkbox" 
-                        id="autoDraft" 
+                      <input
+                        type="checkbox"
+                        id="autoDraft"
                         checked={autoDraft}
                         onChange={(e) => setAutoDraft(e.target.checked)}
-                        className="rounded border-white/10 bg-black/40 text-violet-600 focus:ring-violet-500 w-4 h-4 cursor-pointer"
+                        className="rounded border-border bg-surface-3 text-accent focus:ring-accent w-4 h-4 cursor-pointer"
                       />
-                      <label htmlFor="autoDraft" className="text-gray-300 cursor-pointer">Auto-Draft Enabled</label>
+                      <label htmlFor="autoDraft" className="text-text-secondary cursor-pointer">Auto-Draft Enabled</label>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="checkbox" 
-                        id="autoSend" 
+                      <input
+                        type="checkbox"
+                        id="autoSend"
                         checked={autoSend}
                         onChange={(e) => setAutoSend(e.target.checked)}
-                        className="rounded border-white/10 bg-black/40 text-violet-600 focus:ring-violet-500 w-4 h-4 cursor-pointer"
+                        className="rounded border-border bg-surface-3 text-accent focus:ring-accent w-4 h-4 cursor-pointer"
                       />
-                      <label htmlFor="autoSend" className="text-gray-300 cursor-pointer">Auto-Send (Disabled Default)</label>
+                      <label htmlFor="autoSend" className="text-text-secondary cursor-pointer">Auto-Send (Disabled Default)</label>
                     </div>
 
                     <div className="flex items-center gap-2 col-span-2">
-                      <input 
-                        type="checkbox" 
-                        id="reviewFallback" 
+                      <input
+                        type="checkbox"
+                        id="reviewFallback"
                         checked={manualReviewFallback}
                         onChange={(e) => setManualReviewFallback(e.target.checked)}
-                        className="rounded border-white/10 bg-black/40 text-violet-600 focus:ring-violet-500 w-4 h-4 cursor-pointer"
+                        className="rounded border-border bg-surface-3 text-accent focus:ring-accent w-4 h-4 cursor-pointer"
                       />
-                      <label htmlFor="reviewFallback" className="text-gray-300 cursor-pointer font-semibold text-violet-400">Manual Review Fallback</label>
+                      <label htmlFor="reviewFallback" className="text-text-secondary cursor-pointer font-semibold text-accent-text">Manual Review Fallback</label>
                     </div>
                   </div>
                 </div>
@@ -382,17 +382,17 @@ export default function RulesPage() {
             )}
 
             {/* Submit */}
-            <div className="flex justify-end gap-3 pt-3 border-t border-white/5">
+            <div className="flex justify-end gap-3 pt-3 border-t border-border">
               <button
                 type="button"
                 onClick={() => setIsFormOpen(false)}
-                className="px-4 py-2 border border-white/10 rounded-lg text-gray-400 hover:text-white transition-colors cursor-pointer"
+                className="px-4 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-white font-semibold shadow-lg shadow-violet-600/10 cursor-pointer"
+                className="px-5 py-2 bg-accent hover:bg-accent-hover rounded-lg text-white font-semibold shadow-lg shadow-accent/10 cursor-pointer"
               >
                 Save Automation Rule
               </button>
@@ -404,22 +404,22 @@ export default function RulesPage() {
       {/* Rules list */}
       <div className="grid grid-cols-1 gap-6">
         {rules.length === 0 ? (
-          <div className="glass-panel py-12 rounded-xl text-center border border-white/5 flex flex-col items-center justify-center text-gray-500">
-            <Sliders className="w-12 h-12 text-gray-700 mb-3 animate-pulse" />
-            <h3 className="text-sm font-semibold text-gray-400">No automation rules configured</h3>
-            <p className="text-xs text-gray-500 mt-1">Create rules to auto-answer or route incoming emails.</p>
+          <div className="glass-panel py-12 rounded-xl text-center border border-border flex flex-col items-center justify-center text-text-muted">
+            <Sliders className="w-12 h-12 text-text-muted mb-3 animate-pulse" />
+            <h3 className="text-sm font-semibold text-text-secondary">No automation rules configured</h3>
+            <p className="text-xs text-text-muted mt-1">Create rules to auto-answer or route incoming emails.</p>
           </div>
         ) : (
           rules.map((rule) => (
-            <div key={rule.id} className={`glass-panel p-6 rounded-xl border border-white/5 hover:border-white/10 transition-all ${
+            <div key={rule.id} className={`glass-panel p-6 rounded-xl border border-border hover:border-border transition-all ${
               !rule.active ? 'opacity-60' : ''
             }`}>
               <div className="flex justify-between items-start gap-4 mb-4">
                 <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-text-primary flex items-center gap-2">
                     {rule.name}
                     {!rule.active && (
-                      <span className="px-1.5 py-0.5 rounded bg-gray-500/10 border border-gray-500/20 text-[9px] text-gray-400 font-medium">
+                      <span className="px-1.5 py-0.5 rounded bg-surface-3 border border-border text-[9px] text-text-muted font-medium">
                         Inactive
                       </span>
                     )}
@@ -428,14 +428,14 @@ export default function RulesPage() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleToggleRule(rule)}
-                    className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-colors cursor-pointer"
+                    className="p-1 hover:bg-surface-3 rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
                     title={rule.active ? 'Deactivate rule' : 'Activate rule'}
                   >
-                    {rule.active ? <ToggleRight className="w-6 h-6 text-emerald-400" /> : <ToggleLeft className="w-6 h-6 text-gray-500" />}
+                    {rule.active ? <ToggleRight className="w-6 h-6 text-success" /> : <ToggleLeft className="w-6 h-6 text-text-muted" />}
                   </button>
                   <button
                     onClick={() => handleDelete(rule.id)}
-                    className="p-1.5 hover:bg-white/5 rounded text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
+                    className="p-1.5 hover:bg-surface-3 rounded text-text-secondary hover:text-danger transition-colors cursor-pointer"
                     title="Delete rule"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -444,27 +444,27 @@ export default function RulesPage() {
               </div>
 
               {/* Conditions & Actions Description */}
-              <div className="space-y-2.5 text-xs bg-black/20 p-4 rounded-lg border border-white/5">
+              <div className="space-y-2.5 text-xs bg-surface-3 p-4 rounded-lg border border-border">
                 <div className="flex items-start gap-2">
-                  <span className="px-1.5 py-0.5 rounded bg-violet-600/10 border border-violet-500/20 text-[9px] font-bold text-violet-400 uppercase tracking-wider mt-0.5">
+                  <span className="px-1.5 py-0.5 rounded bg-accent-bg border border-accent-border text-[9px] font-bold text-accent-text uppercase tracking-wider mt-0.5">
                     IF
                   </span>
-                  <div className="text-gray-400 leading-normal">{formatConditions(rule.conditions)}</div>
+                  <div className="text-text-secondary leading-normal">{formatConditions(rule.conditions)}</div>
                 </div>
                 <div className="flex items-start gap-2">
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-600/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-400 uppercase tracking-wider mt-0.5">
+                  <span className="px-1.5 py-0.5 rounded bg-success-bg border border-success/25 text-[9px] font-bold text-success uppercase tracking-wider mt-0.5">
                     THEN
                   </span>
-                  <div className="text-gray-400 leading-normal">{formatActions(rule.actions)}</div>
+                  <div className="text-text-secondary leading-normal">{formatActions(rule.actions)}</div>
                 </div>
               </div>
 
               {/* Trigger Stats */}
               {(rule.triggerCount !== undefined && rule.triggerCount > 0) && (
-                <div className="mt-3 pt-2 flex gap-4 text-[10px] text-gray-500 font-mono">
-                  <span>Triggers Count: <strong className="text-violet-400">{rule.triggerCount}</strong></span>
+                <div className="mt-3 pt-2 flex gap-4 text-[10px] text-text-muted font-mono">
+                  <span>Triggers Count: <strong className="text-accent-text">{rule.triggerCount}</strong></span>
                   {rule.lastTriggeredAt && (
-                    <span>Last Triggered: <strong className="text-violet-400">{new Date(rule.lastTriggeredAt).toLocaleString()}</strong></span>
+                    <span>Last Triggered: <strong className="text-accent-text">{new Date(rule.lastTriggeredAt).toLocaleString()}</strong></span>
                   )}
                 </div>
               )}

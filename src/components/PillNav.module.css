@@ -30,7 +30,7 @@
   height: var(--nav-h);
   padding: 0 14px;
   background: var(--pill-bg, transparent);
-  color: var(--pill-text, #9ca3af);
+  color: var(--pill-text, #a1a1aa);
   text-decoration: none;
   border-radius: 9999px;
   box-sizing: border-box;
@@ -44,12 +44,12 @@
 }
 
 .pill:focus-visible {
-  outline: 2px solid var(--base, #7c3aed);
+  outline: 2px solid var(--base, #6366f1);
   outline-offset: 2px;
 }
 
 .pill.isActive {
-  background: var(--base, #7c3aed);
+  background: var(--base, #6366f1);
 }
 
 .pill.isActive .pillContent {
@@ -61,7 +61,7 @@
   left: 50%;
   bottom: 0;
   border-radius: 50%;
-  background: var(--base, #7c3aed);
+  background: var(--base, #6366f1);
   z-index: 1;
   display: block;
   pointer-events: none;
@@ -82,7 +82,7 @@
   align-items: center;
   gap: 10px;
   z-index: 2;
-  color: var(--pill-text, #9ca3af);
+  color: var(--pill-text, #a1a1aa);
   will-change: transform;
 }
 

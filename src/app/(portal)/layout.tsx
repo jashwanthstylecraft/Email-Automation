@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { CommandMenu } from '@/components/command-menu';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   LayoutGrid, Mail, Sliders, FileText, Settings as SettingsIcon,
   Terminal, LogOut, RefreshCw, Wand2, Activity, StickyNote, History
@@ -13,12 +14,12 @@ import PillNav from '@/components/PillNav';
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { 
-    user, fetchSession, logout, syncInbox, isLoading, 
-    fetchEmails, fetchDashboard, fetchRules, fetchSettings, 
-    fetchDocuments, fetchTemplates, fetchIntegrations, fetchAuditLogs 
+  const {
+    user, fetchSession, logout, syncInbox, isLoading,
+    fetchEmails, fetchDashboard, fetchRules, fetchSettings,
+    fetchDocuments, fetchTemplates, fetchIntegrations, fetchAuditLogs
   } = useStore();
-  
+
   const [isCommandOpen, setIsCommandOpen] = useState(false);
 
   useEffect(() => {
@@ -46,10 +47,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
 
   if (!user) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#0a0a0c]">
+      <div className="flex h-screen items-center justify-center bg-bg">
         <div className="text-center space-y-4">
-          <div className="w-12 h-12 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-gray-400 text-sm">Synchronizing Secure Session...</p>
+          <div className="w-12 h-12 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-text-secondary text-sm">Synchronizing Secure Session...</p>
         </div>
       </div>
     );
@@ -75,18 +76,18 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
   ];
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#08080a] bg-grid-pattern text-white">
+    <div className="flex h-screen w-screen overflow-hidden bg-bg bg-grid-pattern text-text-primary">
       {/* Sidebar Navigation */}
-      <aside className="w-40 border-r border-white/5 bg-[#0b0b0f]/80 backdrop-blur-md flex flex-col flex-shrink-0">
-        <div className="h-16 flex items-center px-4 border-b border-white/5 gap-2.5 group cursor-pointer flex-shrink-0">
-          <div className="p-1.5 bg-violet-500/10 border border-violet-500/20 rounded-lg transition-all duration-300 group-hover:scale-110 group-hover:border-violet-500/40 group-hover:shadow-[0_0_15px_rgba(139,92,246,0.3)]">
-            <Mail className="w-4 h-4 text-violet-400 transition-transform duration-500 group-hover:rotate-12" />
+      <aside className="w-40 border-r border-border bg-surface-1/80 backdrop-blur-md flex flex-col flex-shrink-0">
+        <div className="h-16 flex items-center px-4 border-b border-border gap-2.5 group cursor-pointer flex-shrink-0">
+          <div className="p-1.5 bg-accent-bg border border-accent-border rounded-lg transition-all duration-300 group-hover:scale-110 group-hover:border-accent/40 group-hover:shadow-[0_0_15px_rgba(99,102,241,0.3)]">
+            <Mail className="w-4 h-4 text-accent-text transition-transform duration-500 group-hover:rotate-12" />
           </div>
           <div className="min-w-0">
-            <h1 className="font-extrabold text-[11px] uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-200 transition-colors group-hover:from-violet-300 group-hover:to-white truncate">
+            <h1 className="font-extrabold text-[11px] uppercase tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-accent-text to-text-secondary transition-colors group-hover:from-accent-text group-hover:to-text-primary truncate">
               StyleCraft
             </h1>
-            <p className="text-[7px] text-gray-500 uppercase tracking-widest font-bold transition-all group-hover:text-violet-400 truncate">
+            <p className="text-[7px] text-text-muted uppercase tracking-widest font-bold transition-all group-hover:text-accent-text truncate">
               Email Automation
             </p>
           </div>
@@ -97,26 +98,26 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           <PillNav
             items={navItems.map(({ name, path, icon }) => ({ label: name, href: path, icon }))}
             activeHref={pathname}
-            baseColor="#7c3aed"
+            baseColor="var(--accent)"
             pillColor="transparent"
             hoveredPillTextColor="#ffffff"
-            pillTextColor="#9ca3af"
+            pillTextColor="var(--text-secondary)"
           />
         </nav>
 
         {/* User profile / Logout */}
-        <div className="p-3 border-t border-white/5 bg-black/20 flex-shrink-0">
+        <div className="p-3 border-t border-border bg-surface-1 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="min-w-0 mr-2">
               <p className="text-sm font-semibold truncate">{user.name}</p>
-              <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
+              <p className="text-[11px] text-text-muted truncate">{user.email}</p>
             </div>
             <button
               onClick={async () => {
                 await logout();
                 router.push('/login');
               }}
-              className="p-2 text-gray-400 hover:text-red-400 rounded-lg hover:bg-white/5 transition-colors"
+              className="p-2 text-text-secondary hover:text-danger rounded-lg hover:bg-surface-3 transition-colors"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
@@ -128,15 +129,15 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       {/* Main Content Pane */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header */}
-        <header className="h-16 border-b border-white/5 bg-[#0b0b0f]/60 backdrop-blur-md flex items-center justify-between px-8 flex-shrink-0">
+        <header className="h-16 border-b border-border bg-surface-1/60 backdrop-blur-md flex items-center justify-between px-8 flex-shrink-0">
           <div className="flex items-center gap-4">
             {/* Quick search button */}
             <button
               onClick={() => setIsCommandOpen(true)}
-              className="px-3 py-1.5 rounded-lg border border-white/10 hover:border-violet-500/30 bg-white/5 hover:bg-white/10 text-xs text-gray-400 flex items-center gap-2 cursor-pointer transition-colors"
+              className="px-3 py-1.5 rounded-lg border border-border hover:border-accent-border bg-surface-2 hover:bg-surface-3 text-xs text-text-secondary flex items-center gap-2 cursor-pointer transition-colors"
             >
               <span>Search or jump to...</span>
-              <kbd className="px-1.5 py-0.5 rounded bg-black/40 text-[9px] border border-white/10">Ctrl+K</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-surface-3 text-[9px] border border-border">Ctrl+K</kbd>
             </button>
           </div>
 
@@ -144,18 +145,19 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
             <button
               onClick={handleSync}
               disabled={isLoading}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-violet-500/30 hover:border-violet-500 bg-violet-600/10 hover:bg-violet-600/20 text-xs text-violet-300 font-semibold cursor-pointer transition-all ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border border-accent-border hover:border-accent bg-accent-bg hover:bg-accent/20 text-xs text-accent-text font-semibold cursor-pointer transition-all ${
                 isLoading ? 'opacity-50 pointer-events-none' : ''
               }`}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               Sync Inbox
             </button>
+            <ThemeToggle />
           </div>
         </header>
 
         {/* Portal Page Body */}
-        <main className="flex-1 overflow-y-auto bg-black/30 p-8">
+        <main className="flex-1 overflow-y-auto bg-bg p-8">
           {children}
         </main>
       </div>

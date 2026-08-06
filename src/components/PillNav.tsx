@@ -37,10 +37,10 @@ export default function PillNav({
   activeHref,
   className = '',
   ease = 'power3.easeOut',
-  baseColor = '#7c3aed',
+  baseColor = 'var(--accent)',
   pillColor = 'transparent',
   hoveredPillTextColor = '#ffffff',
-  pillTextColor = '#9ca3af',
+  pillTextColor = 'var(--text-secondary)',
 }: PillNavProps) {
   const itemRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const circleRefs = useRef<Array<HTMLSpanElement | null>>([]);

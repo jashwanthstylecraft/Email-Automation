@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { gsap } from 'gsap';
 import styles from './MagicBento.module.css';
 
-export const DEFAULT_GLOW_COLOR = '132, 0, 255';
+export const DEFAULT_GLOW_COLOR = '99, 102, 241';
 const MOBILE_BREAKPOINT = 768;
 
 function useIsMobile() {

@@ -193,14 +193,14 @@ export default function TemplatesPage() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Reply Templates</h1>
-          <p className="text-gray-400 text-xs mt-1">
+          <h1 className="text-2xl font-bold tracking-tight text-text-primary">Reply Templates</h1>
+          <p className="text-text-secondary text-xs mt-1">
             Configure approved customer-service replies extracted from your responses document.
           </p>
         </div>
         <button
           onClick={handleCreateNew}
-          className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-xs font-semibold rounded-lg text-white transition-all shadow-lg shadow-violet-600/15 cursor-pointer"
+          className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover text-xs font-semibold rounded-lg text-white transition-all shadow-lg shadow-accent/15 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Create Template
@@ -209,15 +209,15 @@ export default function TemplatesPage() {
 
       {/* Editor Form */}
       {isFormOpen && (
-        <div className="glass-panel p-6 rounded-xl border border-violet-500/20 bg-violet-950/5 space-y-6">
-          <div className="flex justify-between items-center pb-3 border-b border-white/5">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-violet-400" />
+        <div className="glass-panel p-6 rounded-xl border border-accent-border bg-accent-bg space-y-6">
+          <div className="flex justify-between items-center pb-3 border-b border-border">
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-accent-text" />
               {editingId ? 'Edit Email Template' : 'Create Custom Email Template'}
             </h3>
-            <button 
+            <button
               onClick={() => setIsFormOpen(false)}
-              className="text-gray-400 hover:text-white transition-colors cursor-pointer text-xs"
+              className="text-text-secondary hover:text-text-primary transition-colors cursor-pointer text-xs"
             >
               Cancel
             </button>
@@ -226,107 +226,107 @@ export default function TemplatesPage() {
           <form onSubmit={handleSave} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Template Identifier</label>
+                <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Template Identifier</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Password Reset Guide"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500"
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Template Subject Line</label>
+                <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Template Subject Line</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Re: Password Reset Request"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500"
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Template Status</label>
+                <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Template Status</label>
                 <button
                   type="button"
                   onClick={() => setActive(!active)}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-black/40 border border-white/10 rounded-lg text-white font-semibold outline-none w-full justify-between cursor-pointer"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-surface-3 border border-border rounded-lg text-text-primary font-semibold outline-none w-full justify-between cursor-pointer"
                 >
                   <span>{active ? 'Active (Enabled)' : 'Inactive (Disabled)'}</span>
                   {active ? (
-                    <ToggleRight className="w-6 h-6 text-violet-400 animate-pulse" />
+                    <ToggleRight className="w-6 h-6 text-accent-text animate-pulse" />
                   ) : (
-                    <ToggleLeft className="w-6 h-6 text-gray-500" />
+                    <ToggleLeft className="w-6 h-6 text-text-muted" />
                   )}
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Template Body</label>
+              <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Template Body</label>
               <textarea
                 required
                 rows={8}
                 placeholder="Hi {{customer_name}},\n\nYou can easily reset your password by going to: https://stylecraftus.com/reset-password.\n\n{{closing}}"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-white outline-none focus:border-violet-500 font-sans leading-relaxed text-xs"
+                className="w-full bg-surface-3 border border-border rounded-lg p-3 text-text-primary outline-none focus:border-accent font-sans leading-relaxed text-xs"
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Interpolation Variables (Comma-separated)</label>
+                <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Interpolation Variables (Comma-separated)</label>
                 <input
                   type="text"
                   placeholder="e.g. customer_name, closing"
                   value={variables}
                   onChange={(e) => setVariables(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500 font-mono"
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent font-mono"
                 />
               </div>
               <div>
-                <label className="block font-semibold text-gray-400 uppercase tracking-wider mb-2">Internal Notes (Administrative)</label>
+                <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Internal Notes (Administrative)</label>
                 <input
                   type="text"
                   placeholder="e.g. For Canadian users only, updated June 2026..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-violet-500"
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent"
                 />
               </div>
             </div>
 
             {/* Structured keyword editor */}
-            <div className="border-t border-white/5 pt-4 space-y-4">
-              <label className="block font-semibold text-gray-400 uppercase tracking-wider">Matching Keywords</label>
+            <div className="border-t border-border pt-4 space-y-4">
+              <label className="block font-semibold text-text-secondary uppercase tracking-wider">Matching Keywords</label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {KEYWORD_CATEGORIES.map(({ key, label, hint }) => (
-                  <div key={key} className="bg-black/30 border border-white/10 rounded-lg p-3">
+                  <div key={key} className="bg-surface-3 border border-border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] font-bold text-gray-300 uppercase">{label}</span>
-                      <span className="text-[9px] text-gray-500">{keywordsState[key].length}</span>
+                      <span className="text-[10px] font-bold text-text-secondary uppercase">{label}</span>
+                      <span className="text-[9px] text-text-muted">{keywordsState[key].length}</span>
                     </div>
-                    <p className="text-[9px] text-gray-500 mb-2 leading-relaxed">{hint}</p>
+                    <p className="text-[9px] text-text-muted mb-2 leading-relaxed">{hint}</p>
                     <div className="flex flex-wrap gap-1.5 mb-2 min-h-[20px]">
                       {keywordsState[key].map((kw) => (
                         <span
                           key={kw}
                           className={`flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-mono ${
                             key === 'negative'
-                              ? 'bg-red-600/10 border border-red-500/20 text-red-300'
-                              : 'bg-violet-600/10 border border-violet-500/20 text-violet-300'
+                              ? 'bg-danger-bg border border-danger/25 text-danger'
+                              : 'bg-accent-bg border border-accent-border text-accent-text'
                           }`}
                         >
                           {kw}
                           <button
                             type="button"
                             onClick={() => removeKeywordFromCategory(key, kw)}
-                            className="hover:text-white cursor-pointer"
+                            className="hover:text-text-primary cursor-pointer"
                             title="Remove keyword"
                           >
                             <X className="w-2.5 h-2.5" />
@@ -346,12 +346,12 @@ export default function TemplatesPage() {
                           }
                         }}
                         placeholder="Add new keyword..."
-                        className="flex-1 bg-black/40 border border-white/10 rounded px-2 py-1 text-[10px] text-white outline-none focus:border-violet-500"
+                        className="flex-1 bg-surface-3 border border-border rounded px-2 py-1 text-[10px] text-text-primary outline-none focus:border-accent"
                       />
                       <button
                         type="button"
                         onClick={() => addKeywordToCategory(key)}
-                        className="px-2 py-1 bg-violet-600 hover:bg-violet-500 text-white rounded text-[10px] font-semibold cursor-pointer"
+                        className="px-2 py-1 bg-accent hover:bg-accent-hover text-white rounded text-[10px] font-semibold cursor-pointer"
                       >
                         Add
                       </button>
@@ -361,17 +361,17 @@ export default function TemplatesPage() {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-3 border-t border-white/5">
+            <div className="flex justify-end gap-3 pt-3 border-t border-border">
               <button
                 type="button"
                 onClick={() => setIsFormOpen(false)}
-                className="px-4 py-2 border border-white/10 rounded-lg text-gray-400 hover:text-white transition-colors cursor-pointer"
+                className="px-4 py-2 border border-border rounded-lg text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="flex items-center gap-1.5 px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-semibold cursor-pointer shadow-lg shadow-violet-600/15"
+                className="flex items-center gap-1.5 px-5 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg font-semibold cursor-pointer shadow-lg shadow-accent/15"
               >
                 <Save className="w-4 h-4" />
                 Save Template
@@ -383,24 +383,24 @@ export default function TemplatesPage() {
 
       {/* Simulator Panel & Historical Feedback */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* Templates List */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-300">
+            <h3 className="text-sm font-semibold text-text-secondary">
               {activeQueryFilter === 'true' ? 'Active Templates' : activeQueryFilter === 'false' ? 'Disabled Templates' : 'All Templates'}
             </h3>
             {activeQueryFilter && (
-              <a href="/templates" className="text-[10px] text-violet-400 hover:text-violet-300 transition-colors">Clear filter ×</a>
+              <a href="/templates" className="text-[10px] text-accent-text hover:text-accent-text transition-colors">Clear filter ×</a>
             )}
           </div>
           {isLoading && templates.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-violet-400" />
+            <div className="p-8 text-center text-text-muted">
+              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-accent-text" />
               Loading templates...
             </div>
           ) : templates.filter(t => activeQueryFilter === null || String(t.active !== false) === activeQueryFilter).length === 0 ? (
-            <div className="glass-panel p-8 text-center text-gray-500 border border-white/5 rounded-xl bg-[#0b0b0f]/60">
+            <div className="glass-panel p-8 text-center text-text-muted border border-border rounded-xl bg-bg">
               No response templates seeded yet. Upload your response document to bootstrap them automatically.
             </div>
           ) : (
@@ -408,34 +408,34 @@ export default function TemplatesPage() {
               {templates.filter(t => activeQueryFilter === null || String(t.active !== false) === activeQueryFilter).map((tmpl) => {
                 const feedbackLogs = getTemplateFeedback(tmpl.id);
                 return (
-                  <div key={tmpl.id} className={`glass-panel p-5 rounded-xl border flex flex-col justify-between bg-[#0b0b0f]/60 transition-all ${
-                    tmpl.active !== false ? 'border-white/5' : 'border-white/5 opacity-55'
+                  <div key={tmpl.id} className={`glass-panel p-5 rounded-xl border flex flex-col justify-between bg-bg transition-all ${
+                    tmpl.active !== false ? 'border-border' : 'border-border opacity-55'
                   }`}>
                     <div>
                       <div className="flex justify-between items-start gap-2">
-                        <h4 className="font-bold text-white text-xs truncate max-w-[70%]">{tmpl.name}</h4>
+                        <h4 className="font-bold text-text-primary text-xs truncate max-w-[70%]">{tmpl.name}</h4>
                         <div className="flex gap-1.5">
                           <button
                             onClick={() => handleToggleActive(tmpl)}
-                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-colors cursor-pointer"
+                            className="p-1 hover:bg-surface-3 rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
                             title={tmpl.active !== false ? 'Disable Template' : 'Enable Template'}
                           >
                             {tmpl.active !== false ? (
-                              <ToggleRight className="w-4 h-4 text-violet-400 animate-pulse" />
+                              <ToggleRight className="w-4 h-4 text-accent-text animate-pulse" />
                             ) : (
-                              <ToggleLeft className="w-4 h-4 text-gray-500" />
+                              <ToggleLeft className="w-4 h-4 text-text-muted" />
                             )}
                           </button>
                           <button
                             onClick={() => handleEdit(tmpl)}
-                            className="p-1 hover:bg-white/5 rounded text-gray-400 hover:text-white transition-colors cursor-pointer"
+                            className="p-1 hover:bg-surface-3 rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
                           >
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           {isAdmin && (
                             <button
                               onClick={() => handleDelete(tmpl.id)}
-                              className="p-1 hover:bg-white/5 rounded text-red-500/70 hover:text-red-400 transition-colors cursor-pointer"
+                              className="p-1 hover:bg-surface-3 rounded text-danger/70 hover:text-danger transition-colors cursor-pointer"
                               title="Delete Template (Admin only)"
                             >
                               <Trash className="w-3.5 h-3.5" />
@@ -444,23 +444,23 @@ export default function TemplatesPage() {
                         </div>
                       </div>
 
-                      <p className="text-[9px] text-gray-500 uppercase tracking-wider font-mono mt-1.5 truncate">
+                      <p className="text-[9px] text-text-muted uppercase tracking-wider font-mono mt-1.5 truncate">
                         Subject: {tmpl.subject}
                       </p>
-                      
-                      <div className="bg-black/30 border border-white/5 p-3 rounded-lg mt-3 text-[11px] text-gray-300 line-clamp-3 leading-relaxed font-sans whitespace-pre-wrap">
+
+                      <div className="bg-surface-3 border border-border p-3 rounded-lg mt-3 text-[11px] text-text-secondary line-clamp-3 leading-relaxed font-sans whitespace-pre-wrap">
                         {tmpl.body}
                       </div>
 
                       {tmpl.notes && (
-                        <p className="text-[10px] text-amber-300/80 italic mt-3 flex items-center gap-1 font-mono">
-                          <Info className="w-3 h-3 text-amber-300" />
+                        <p className="text-[10px] text-warning/80 italic mt-3 flex items-center gap-1 font-mono">
+                          <Info className="w-3 h-3 text-warning" />
                           Note: {tmpl.notes}
                         </p>
                       )}
                     </div>
 
-                    <div className="border-t border-white/5 pt-3 mt-4 space-y-2">
+                    <div className="border-t border-border pt-3 mt-4 space-y-2">
                       {(() => {
                         const kw = parseKeywords(tmpl.keywords);
                         const preview = [...kw.primary, ...kw.product, ...kw.problem, ...kw.intent].slice(0, 6);
@@ -468,31 +468,31 @@ export default function TemplatesPage() {
                         return total > 0 ? (
                           <div className="flex flex-wrap gap-1 items-center">
                             {preview.map((v) => (
-                              <span key={v} className="px-1.5 py-0.5 rounded bg-violet-600/10 border border-violet-500/20 text-[9px] text-violet-300 font-mono">
+                              <span key={v} className="px-1.5 py-0.5 rounded bg-accent-bg border border-accent-border text-[9px] text-accent-text font-mono">
                                 {v}
                               </span>
                             ))}
                             {total > preview.length && (
-                              <span className="text-[9px] text-gray-500">+{total - preview.length} more</span>
+                              <span className="text-[9px] text-text-muted">+{total - preview.length} more</span>
                             )}
                           </div>
                         ) : (
-                          <p className="text-[9px] text-amber-400/80 italic">No distinguishing keywords configured yet — click Edit to add some.</p>
+                          <p className="text-[9px] text-warning/80 italic">No distinguishing keywords configured yet — click Edit to add some.</p>
                         );
                       })()}
 
                       {/* Historical Feedback display */}
                       {feedbackLogs.length > 0 && (
-                        <div className="bg-violet-950/10 border border-violet-500/10 p-2 rounded text-[9px] font-mono text-violet-300 space-y-1">
+                        <div className="bg-accent-bg border border-accent-border p-2 rounded text-[9px] font-mono text-accent-text space-y-1">
                           <span className="font-bold flex items-center gap-1">
-                            <MessageSquare className="w-3 h-3 text-violet-400" />
+                            <MessageSquare className="w-3 h-3 text-accent-text" />
                             Historical AI Matching Logs ({feedbackLogs.length})
                           </span>
-                          <div className="max-h-16 overflow-y-auto divide-y divide-white/5 pr-1">
+                          <div className="max-h-16 overflow-y-auto divide-y divide-border pr-1">
                             {feedbackLogs.map((log, idx) => (
                               <div key={idx} className="py-1 flex justify-between gap-2">
                                 <span className="truncate">{log.userApprovedTmpl === tmpl.id ? '✓ Correct Match' : '✗ Overridden'}</span>
-                                <span className="text-gray-500">{new Date(log.createdAt).toLocaleDateString()}</span>
+                                <span className="text-text-muted">{new Date(log.createdAt).toLocaleDateString()}</span>
                               </div>
                             ))}
                           </div>
@@ -508,22 +508,22 @@ export default function TemplatesPage() {
 
         {/* Simulator Tools */}
         <div className="space-y-6">
-          <div className="glass-panel p-6 rounded-xl border border-white/5 bg-[#0b0b0f]/60 space-y-4">
-            <h3 className="text-sm font-semibold text-gray-300 flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-violet-400" />
+          <div className="glass-panel p-6 rounded-xl border border-border bg-bg space-y-4">
+            <h3 className="text-sm font-semibold text-text-secondary flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-accent-text" />
               Test Template Engine
             </h3>
-            <p className="text-gray-500 text-[10px] leading-relaxed">
+            <p className="text-text-muted text-[10px] leading-relaxed">
               Verify matching criteria and preview the auto-wrapped greeting/closing signature.
             </p>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-semibold">Select Template</label>
+                <label className="block text-[10px] text-text-secondary uppercase tracking-wider mb-1 font-semibold">Select Template</label>
                 <select
                   value={testSelectedId}
                   onChange={(e) => setTestSelectedId(e.target.value)}
-                  className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-white outline-none focus:border-violet-500 text-[11px] cursor-pointer"
+                  className="w-full bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-text-primary outline-none focus:border-accent text-[11px] cursor-pointer"
                 >
                   <option value="">-- Choose Template --</option>
                   {templates.map(t => (
@@ -533,41 +533,41 @@ export default function TemplatesPage() {
               </div>
 
               <div>
-                <label className="block text-[10px] text-gray-400 uppercase tracking-wider mb-1 font-semibold">Sample Email Body Text</label>
+                <label className="block text-[10px] text-text-secondary uppercase tracking-wider mb-1 font-semibold">Sample Email Body Text</label>
                 <textarea
                   rows={4}
                   value={testText}
                   onChange={(e) => setTestText(e.target.value)}
                   placeholder="Paste hypothetical customer email text here..."
-                  className="w-full bg-black/40 border border-white/10 rounded-lg p-2.5 text-white outline-none focus:border-violet-500 font-sans leading-relaxed text-[11px]"
+                  className="w-full bg-surface-3 border border-border rounded-lg p-2.5 text-text-primary outline-none focus:border-accent font-sans leading-relaxed text-[11px]"
                 />
               </div>
 
               <button
                 onClick={handleTestTemplate}
                 disabled={!testSelectedId || !testText.trim()}
-                className="w-full py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white rounded-lg font-semibold cursor-pointer transition-colors shadow-lg shadow-violet-600/10"
+                className="w-full py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-white rounded-lg font-semibold cursor-pointer transition-colors shadow-lg shadow-accent/10"
               >
                 Simulate Matcher
               </button>
             </div>
 
             {testResult && (
-              <div className="pt-4 border-t border-white/5 space-y-3">
+              <div className="pt-4 border-t border-border space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase">Trigger Result:</span>
+                  <span className="text-[10px] font-bold text-text-secondary uppercase">Trigger Result:</span>
                   <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
-                    testResult.matches ? 'bg-emerald-600/10 border border-emerald-500/20 text-emerald-400' : 'bg-red-600/10 border border-red-500/20 text-red-400'
+                    testResult.matches ? 'bg-success-bg border border-success/25 text-success' : 'bg-danger-bg border border-danger/25 text-danger'
                   }`}>
                     {testResult.matches ? `✓ Trigger Match (${Math.round(testResult.confidence * 100)}%)` : '✗ No Match — a different/no template would be chosen'}
                   </span>
                 </div>
                 {testResult.keywords.length > 0 && (
                   <div>
-                    <span className="text-[9px] text-gray-500 block uppercase font-mono">Matched Keywords:</span>
+                    <span className="text-[9px] text-text-muted block uppercase font-mono">Matched Keywords:</span>
                     <div className="flex gap-1.5 flex-wrap mt-1">
                       {testResult.keywords.map(kw => (
-                        <span key={kw} className="px-1.5 py-0.5 rounded bg-violet-600/10 border border-violet-500/20 text-violet-400 font-mono text-[9px]">
+                        <span key={kw} className="px-1.5 py-0.5 rounded bg-accent-bg border border-accent-border text-accent-text font-mono text-[9px]">
                           {kw}
                         </span>
                       ))}
@@ -576,20 +576,20 @@ export default function TemplatesPage() {
                 )}
                 {testResult.suggestions.length > 0 && (
                   <div>
-                    <span className="text-[9px] text-gray-500 block uppercase font-mono">Top Suggested Templates:</span>
+                    <span className="text-[9px] text-text-muted block uppercase font-mono">Top Suggested Templates:</span>
                     <div className="space-y-1 mt-1">
                       {testResult.suggestions.map(s => (
-                        <div key={s.name} className="flex justify-between text-[10px] text-gray-300">
+                        <div key={s.name} className="flex justify-between text-[10px] text-text-secondary">
                           <span className="truncate max-w-[70%]">{s.name}</span>
-                          <span className="text-gray-500 font-mono">{Math.round(s.confidence * 100)}%</span>
+                          <span className="text-text-muted font-mono">{Math.round(s.confidence * 100)}%</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
                 <div>
-                  <span className="text-[9px] text-gray-500 block uppercase font-mono">Simulated Draft Output:</span>
-                  <div className="bg-black/30 border border-white/5 p-3 rounded-lg mt-1 text-[11px] text-violet-200 whitespace-pre-wrap leading-relaxed font-sans">
+                  <span className="text-[9px] text-text-muted block uppercase font-mono">Simulated Draft Output:</span>
+                  <div className="bg-surface-3 border border-border p-3 rounded-lg mt-1 text-[11px] text-accent-text whitespace-pre-wrap leading-relaxed font-sans">
                     {testResult.preview}
                   </div>
                 </div>
@@ -606,7 +606,7 @@ export default function TemplatesPage() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
             transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            className="fixed bottom-6 right-6 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-xl bg-emerald-600 text-white shadow-2xl shadow-emerald-900/40 border border-emerald-400/30"
+            className="fixed bottom-6 right-6 z-[100] flex items-center gap-2.5 px-4 py-3 rounded-xl bg-success text-text-primary shadow-2xl shadow-success/40 border border-success/25"
           >
             <PartyPopper className="w-4 h-4" />
             <span className="text-xs font-semibold">{saveToast}</span>

@@ -21,8 +21,8 @@
   padding: 2px;
   background: radial-gradient(
     var(--glow-radius) circle at var(--glow-x) var(--glow-y),
-    rgba(var(--glow-color, 132, 0, 255), calc(var(--glow-intensity) * 0.8)) 0%,
-    rgba(var(--glow-color, 132, 0, 255), calc(var(--glow-intensity) * 0.4)) 30%,
+    rgba(var(--glow-color, 99, 102, 241), calc(var(--glow-intensity) * 0.8)) 0%,
+    rgba(var(--glow-color, 99, 102, 241), calc(var(--glow-intensity) * 0.4)) 30%,
     transparent 60%
   );
   border-radius: inherit;
@@ -35,7 +35,7 @@
 }
 
 .bentoCard.borderGlow:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 30px rgba(var(--glow-color, 132, 0, 255), 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3), 0 0 30px rgba(var(--glow-color, 99, 102, 241), 0.15);
 }
 
 .particle {
