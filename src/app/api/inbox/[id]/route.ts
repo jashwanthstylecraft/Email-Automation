@@ -4,12 +4,16 @@ import { sendOutgoingMail } from '@/lib/mail-sender';
 import { parseKeywords, serializeKeywords } from '@/lib/keyword-engine';
 import { getCurrentUser, getClientIp, isAdmin } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import {
+  resolveCustomerName, extractOrderNumberFromText, first100Words,
+  wrapResponseWithGreetingAndClosing, getRecentEditFeedbackExamples, generateToneAdjustedReply,
+} from '@/lib/ai-pipeline';
 
 // Actions that only the assigned agent (or an Admin) may perform -- everyone
 // else viewing an assigned email is read-only. SUBMIT_FEEDBACK is included
 // since accuracy feedback is "work" on the email, not passive viewing.
 const OWNER_ONLY_ACTIONS = new Set([
-  'APPROVE', 'EDIT_DRAFT', 'SEND_CUSTOM', 'REJECT',
+  'APPROVE', 'EDIT_DRAFT', 'SEND_CUSTOM', 'REJECT', 'REGENERATE',
   'CHANGE_STATUS', 'ASSIGN_TEMPLATE', 'ARCHIVE', 'SUBMIT_FEEDBACK', 'FILL_TEMPLATE',
 ]);
 
@@ -163,7 +167,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { action, responseBody, status, assignedUserId } = body;
+    const { action, responseBody, status, assignedUserId, tone } = body;
     const user = await getCurrentUser();
     const ip = getClientIp(request);
 
@@ -283,6 +287,79 @@ export async function POST(
       });
 
       return NextResponse.json({ success: true, message: 'Draft saved' });
+    }
+
+    if (action === 'REGENERATE') {
+      if (!tone) {
+        return NextResponse.json({ error: 'A tone is required to regenerate a draft' }, { status: 400 });
+      }
+
+      const [template, settings] = await Promise.all([
+        email.matchedTemplateId
+          ? prisma.template.findUnique({ where: { id: email.matchedTemplateId } })
+          : Promise.resolve(null),
+        prisma.settings.findUnique({ where: { organizationId: email.organizationId } }),
+      ]);
+
+      const greetingText = settings?.greeting || 'Hello';
+      const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
+      const customerName = resolveCustomerName(email.sender, email.customer?.name);
+      const orderNumber = extractOrderNumberFromText(`${email.subject} ${email.body}`);
+
+      const feedbackBlock = await getRecentEditFeedbackExamples(email.organizationId);
+      const rawReply = await generateToneAdjustedReply(
+        email.subject,
+        first100Words(email.body),
+        tone,
+        template?.body ?? null,
+        feedbackBlock
+      );
+      const finalBody = wrapResponseWithGreetingAndClosing(rawReply, customerName, greetingText, closingSignature, { orderNumber });
+
+      const draft = email.autoReplies.find((r) => r.status === 'DRAFT');
+      const before = draft?.responseBody || null;
+
+      if (draft) {
+        await prisma.autoReply.update({
+          where: { id: draft.id },
+          data: {
+            responseBody: finalBody,
+            originalDraftBody: finalBody,
+            wasEdited: false,
+            editedBy: null,
+            editedAt: null,
+            tone,
+          },
+        });
+      } else {
+        await prisma.autoReply.create({
+          data: {
+            emailId: id,
+            status: 'DRAFT',
+            responseBody: finalBody,
+            originalDraftBody: finalBody,
+            tone,
+          },
+        });
+      }
+
+      await prisma.email.update({
+        where: { id },
+        data: { lastActionByUserId: user?.id || null, lastActionAt: new Date() },
+      });
+
+      await logAudit({
+        action: 'DRAFT_REGENERATED',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        beforeValue: before,
+        afterValue: finalBody,
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} regenerated the draft reply for email from ${email.sender} in a "${tone}" tone`,
+      });
+
+      return NextResponse.json({ success: true, message: 'Draft regenerated' });
     }
 
     if (action === 'SEND_CUSTOM') {

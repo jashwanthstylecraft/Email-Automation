@@ -145,6 +145,7 @@ model AutoReply {
   wasEdited         Boolean   @default(false)
   editedBy          String?   // email of the last person who edited this draft
   editedAt          DateTime?
+  tone              String?   // tone used for the most recent AI regeneration, e.g. "Friendly"
   sentAt            DateTime?
   approvedBy        String?
   createdAt         DateTime  @default(now())

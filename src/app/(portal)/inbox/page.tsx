@@ -14,11 +14,15 @@ import { BentoSection, BentoCard } from '@/components/MagicBento';
 export default function InboxPage() {
   const {
     emails, selectedEmail, selectEmail, fetchEmails,
-    approveDraft, rejectDraft, saveDraftEdits, sendCustomReply,
-    changeEmailStatus, assignEmailUser, isLoading, user,
+    approveDraft, rejectDraft, saveDraftEdits, regenerateDraft, sendCustomReply,
+    changeEmailStatus, assignEmailUser, isLoading, user, settings,
     templates, fetchTemplates, saveTemplate, deleteEmail, archiveEmail, syncInbox, fetchDashboard,
     dashboardCharts, saveNote, workload, fetchWorkload
   } = useStore();
+
+  const TONE_OPTIONS = ['Professional', 'Friendly', 'Formal', 'Sales', 'Technical', 'Support', 'Brand Voice'];
+  const [selectedTone, setSelectedTone] = useState('Professional');
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
@@ -469,6 +473,20 @@ export default function InboxPage() {
 
   const latestDraft = selectedEmail?.autoReplies?.find((r) => r.status === 'DRAFT');
   const sentReply = selectedEmail?.autoReplies?.find((r) => r.status === 'SENT');
+
+  // Tone is per-email, not global: default to whatever this draft was last
+  // generated with, falling back to the org-wide Settings.tone, whenever a
+  // different email is opened.
+  useEffect(() => {
+    setSelectedTone(latestDraft?.tone || settings?.tone || 'Professional');
+  }, [selectedEmail?.id]);
+
+  const handleRegenerateDraft = async () => {
+    if (!selectedEmail) return;
+    setIsRegenerating(true);
+    await regenerateDraft(selectedEmail.id, selectedTone);
+    setIsRegenerating(false);
+  };
 
   // Matched template entity lookup (with name and slug fallbacks to prevent title mismatch bugs)
   const matchedTemplateId = selectedEmail?.matchedTemplateId;
@@ -1167,6 +1185,35 @@ export default function InboxPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Per-Email Tone Selector -- changes this email's draft only, never the org-wide Settings.tone */}
+              {(latestDraft || replyText) && !isCustomMode && !sentReply && !isReadOnly && (
+                <div className="flex items-center justify-between gap-3 px-3 py-2 bg-surface-2 border border-border rounded-lg flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-text-secondary uppercase tracking-wider">Tone</span>
+                    <select
+                      value={selectedTone}
+                      onChange={(e) => setSelectedTone(e.target.value)}
+                      className="bg-surface-3 border border-border-strong rounded-md px-2 py-1 text-xs text-text-primary cursor-pointer focus:outline-none focus:border-accent"
+                    >
+                      {TONE_OPTIONS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                    {latestDraft?.tone && (
+                      <span className="text-[10px] text-text-muted">Last generated: {latestDraft.tone}</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleRegenerateDraft}
+                    disabled={isRegenerating}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-xs text-white rounded-lg font-semibold cursor-pointer transition-all"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isRegenerating ? 'animate-spin' : ''}`} />
+                    {isRegenerating ? 'Regenerating...' : 'Regenerate Draft'}
+                  </button>
+                </div>
+              )}
 
               {/* AI Draft Section */}
               {(latestDraft || replyText) && !isCustomMode && (

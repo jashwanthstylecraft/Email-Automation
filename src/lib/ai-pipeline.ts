@@ -362,6 +362,90 @@ export async function generateRepliesBatch(items: { subject: string; briefBody: 
   return replies.map((r: string) => stripAIOwnFraming(String(r)));
 }
 
+/**
+ * Pulls a few recent human edits to AI/template drafts for this org and
+ * formats them as a short "here's how agents have refined drafts before"
+ * block, so an on-demand regeneration can learn from real feedback instead
+ * of guessing at house style. Built entirely on the existing
+ * AutoReply.wasEdited/originalDraftBody/responseBody trail -- no separate
+ * feedback table needed. Returns '' when there's nothing usable yet.
+ */
+export async function getRecentEditFeedbackExamples(organizationId: string, limit = 3): Promise<string> {
+  const edited = await prisma.autoReply.findMany({
+    where: { wasEdited: true, originalDraftBody: { not: null }, email: { organizationId } },
+    orderBy: { editedAt: 'desc' },
+    take: limit * 2, // over-fetch since some will be filtered out below
+    select: { originalDraftBody: true, responseBody: true },
+  });
+
+  const truncate = (s: string) => (s.length > 250 ? `${s.slice(0, 250)}...` : s);
+  const examples = edited
+    .filter((r) => r.originalDraftBody && r.originalDraftBody.trim() !== r.responseBody.trim())
+    .slice(0, limit)
+    .map((r, i) => `${i + 1}. AI wrote: "${truncate(r.originalDraftBody!.trim())}"\n   Agent edited to: "${truncate(r.responseBody.trim())}"`);
+
+  if (examples.length === 0) return '';
+  return `Here is how support agents have previously refined AI-drafted replies for this organization -- learn from the style/phrasing adjustments they made and apply similar judgment where relevant:\n${examples.join('\n')}`;
+}
+
+/**
+ * On-demand, tone-adjusted reply generation for a single email -- used by
+ * the inbox "Regenerate Draft" action, not by the sync-time pipeline above.
+ * When a matched template's body is supplied, the model is instructed to
+ * rewrite THAT approved content in the requested tone rather than invent
+ * new policy, so facts/policy stay stable and only phrasing changes.
+ */
+
+// Condensed from the StyleCraftUS Brand Voice Guide (July 2026), adapted for
+// support replies rather than marketing copy: the guide's "hype"/street-drop
+// energy is right for product talk but wrong for an apology, so this
+// explicitly scopes which parts of the voice apply in which situation --
+// the community warmth and service promise always do, hype language doesn't.
+const BRAND_VOICE_GUIDE = `Write as StyleCraftUS support -- a family-owned, US-based pro tool brand with 50+ years of combined industry experience, talking to a fellow barber/stylist like part of "the Fam," not a call-center script. Channel this voice:
+- Bold & Competitive: confident and declarative about the tools and craft -- never arrogant toward the customer, and never dismissive of competitors.
+- Tech-Credible: specific about engineering (named motors/technology, torque, vibration, heat management) when it's actually relevant -- never vague fluff like "cutting-edge quality."
+- Community-First ("the Fam"): warm, loyal, reciprocal. Refer to "the Fam" where it fits naturally, and close in the spirit of "If you are not happy, we are not happy." Never generic corporate phrasing like "we appreciate your business" or "valued customer."
+- Street-Culture Fluent: plugged into barber culture -- never forced slang or memes.
+- Craft-Proud & Family-Built: proud of the founder story (Ken & Austin Russo) and craftsmanship; heritage backs up innovation, it doesn't replace it.
+Match the energy to the situation: bring the bold/tech-credible swagger for general or product questions, but for complaints, refunds, or problems lead with straightforward empathy and urgency instead -- the community warmth and "if you're not happy, we're not happy" service promise apply everywhere, hype language does not belong in an apology. Keep it concise (max 5 sentences).`;
+
+export async function generateToneAdjustedReply(
+  subject: string,
+  briefBody: string,
+  tone: string,
+  templateBody?: string | null,
+  feedbackBlock?: string
+): Promise<string> {
+  let systemPrompt = tone === 'Brand Voice'
+    ? `You are a customer support email assistant for StyleCraft. ${BRAND_VOICE_GUIDE}`
+    : `You are a professional customer support email assistant for StyleCraft. Write the reply body in a ${tone} tone. Keep it concise (max 5 sentences).`;
+
+  if (templateBody) {
+    const rewriteInstruction = tone === 'Brand Voice'
+      ? 'Base your reply on the substance of the following approved response template, but substantially rewrite it in the StyleCraftUS brand voice described above -- keep the factual/policy content intact, but the wording should sound distinctly like that voice, not like the template\'s original neutral phrasing'
+      : 'Base your reply on the following approved response template -- keep all factual and policy details from it intact, and only rewrite the phrasing/style to match the requested tone';
+    systemPrompt += ` ${rewriteInstruction}:\n"""\n${templateBody}\n"""`;
+  }
+
+  if (feedbackBlock) {
+    systemPrompt += `\n\n${feedbackBlock}`;
+  }
+
+  const completion = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    max_tokens: 500,
+    temperature: OPENAI_TEMPERATURE,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Subject: ${subject}\nMessage: ${briefBody}` },
+    ],
+  });
+
+  const text = completion.choices[0]?.message?.content;
+  if (!text) throw new Error('OpenAI returned an empty response');
+  return stripAIOwnFraming(text.trim());
+}
+
 interface ClassifiedEmail {
   language: string;
   category: string;
