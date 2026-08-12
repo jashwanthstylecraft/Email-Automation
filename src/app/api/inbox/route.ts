@@ -55,9 +55,9 @@ export async function GET(request: Request) {
 
     if (search) {
       where.OR = [
-        { sender: { contains: search } },
-        { subject: { contains: search } },
-        { body: { contains: search } },
+        { sender: { contains: search, mode: 'insensitive' } },
+        { subject: { contains: search, mode: 'insensitive' } },
+        { body: { contains: search, mode: 'insensitive' } },
       ];
     }
 
