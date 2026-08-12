@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
@@ -135,6 +135,27 @@ export default function InboxPage() {
     fetchEmails({ status: activeFilter, search, category: activeCategory });
     fetchTemplates();
   }, [activeFilter, search, activeCategory]);
+
+  // Keep the inbox list live: poll for newly-synced emails every 30s so a
+  // background sync (cron or another agent clicking "Sync Inbox") shows up
+  // without a manual reload. Skipped while actively editing/composing a
+  // reply -- fetchEmails() returns fresh object references for every email,
+  // and the effect below that resets replyText/isEditingDraft depends on
+  // the whole selectedEmail object, so polling during an in-progress edit
+  // would silently wipe out unsaved changes.
+  const pollGuardRef = useRef({ isEditingDraft, isCustomMode, activeFilter, search, activeCategory });
+  useEffect(() => {
+    pollGuardRef.current = { isEditingDraft, isCustomMode, activeFilter, search, activeCategory };
+  }, [isEditingDraft, isCustomMode, activeFilter, search, activeCategory]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const g = pollGuardRef.current;
+      if (g.isEditingDraft || g.isCustomMode) return;
+      fetchEmails({ status: g.activeFilter, search: g.search, category: g.activeCategory });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Category counts and per-agent workload lanes for the Classify panel
   // (independent of the current Mailbox filter)
