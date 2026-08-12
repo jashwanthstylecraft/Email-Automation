@@ -5,8 +5,9 @@ import { parseKeywords, serializeKeywords } from '@/lib/keyword-engine';
 import { getCurrentUser, getClientIp, isAdmin } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
 import {
-  resolveCustomerName, extractOrderNumberFromText, first100Words,
+  resolveCustomerName, extractForwardedCustomerName, extractOrderNumberFromText, first100Words,
   wrapResponseWithGreetingAndClosing, getRecentEditFeedbackExamples, generateToneAdjustedReply,
+  stripEmailBoilerplate,
 } from '@/lib/ai-pipeline';
 
 // Actions that only the assigned agent (or an Admin) may perform -- everyone
@@ -41,8 +42,9 @@ export async function GET(
     // Dynamic auto-matcher fallback check:
     // If the email doesn't have a template matched and is not replied yet, try to match it against seeded templates.
     if (!email.matchedTemplateId && email.status !== 'REPLIED') {
-      const { runKeywordMatcher } = await import('@/lib/ai-pipeline');
-      const match = await runKeywordMatcher(email.body, email.subject, email.organizationId);
+      const { runKeywordMatcher, stripEmailBoilerplate } = await import('@/lib/ai-pipeline');
+      const cleanBody = stripEmailBoilerplate(email.body);
+      const match = await runKeywordMatcher(cleanBody, email.subject, email.organizationId);
 
       if (match.matchedTemplateId) {
         const template = await prisma.template.findUnique({
@@ -55,8 +57,8 @@ export async function GET(
           const greetingText = settings?.greeting || 'Hello';
           const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
           const { wrapResponseWithGreetingAndClosing, resolveCustomerName, extractOrderNumberFromText } = await import('@/lib/ai-pipeline');
-          const customerName = resolveCustomerName(email.sender, email.customer?.name);
-          const orderNumber = extractOrderNumberFromText(`${email.subject} ${email.body}`);
+          const customerName = extractForwardedCustomerName(cleanBody) || resolveCustomerName(email.sender, email.customer?.name);
+          const orderNumber = extractOrderNumberFromText(`${email.subject} ${cleanBody}`);
 
           // Template matched -- use it directly, no API call needed.
           const replyBody = wrapResponseWithGreetingAndClosing(template.body, customerName, greetingText, closingSignature, { orderNumber });
@@ -303,13 +305,14 @@ export async function POST(
 
       const greetingText = settings?.greeting || 'Hello';
       const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
-      const customerName = resolveCustomerName(email.sender, email.customer?.name);
-      const orderNumber = extractOrderNumberFromText(`${email.subject} ${email.body}`);
+      const cleanBody = stripEmailBoilerplate(email.body);
+      const customerName = extractForwardedCustomerName(cleanBody) || resolveCustomerName(email.sender, email.customer?.name);
+      const orderNumber = extractOrderNumberFromText(`${email.subject} ${cleanBody}`);
 
       const feedbackBlock = await getRecentEditFeedbackExamples(email.organizationId);
       const rawReply = await generateToneAdjustedReply(
         email.subject,
-        first100Words(email.body),
+        first100Words(cleanBody),
         tone,
         template?.body ?? null,
         feedbackBlock
@@ -466,8 +469,9 @@ export async function POST(
       const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
 
       const { wrapResponseWithGreetingAndClosing, resolveCustomerName, extractOrderNumberFromText } = await import('@/lib/ai-pipeline');
-      const customerName = resolveCustomerName(email.sender, email.customer?.name);
-      const orderNumber = extractOrderNumberFromText(`${email.subject} ${email.body}`);
+      const cleanBody = stripEmailBoilerplate(email.body);
+      const customerName = extractForwardedCustomerName(cleanBody) || resolveCustomerName(email.sender, email.customer?.name);
+      const orderNumber = extractOrderNumberFromText(`${email.subject} ${cleanBody}`);
 
       const responseBody = wrapResponseWithGreetingAndClosing(template.body, customerName, greetingText, closingSignature, { orderNumber });
 

@@ -58,6 +58,62 @@ export function resolveCustomerName(senderEmail: string, parsedName?: string | n
 }
 
 /**
+ * Best-effort extraction of the REAL customer's name from a forwarded
+ * email's body. When a support rep forwards a contact-form submission or a
+ * customer's own message, the envelope sender is the rep, not the
+ * customer -- greeting by resolveCustomerName(sender, ...) in that case
+ * addresses the reply to the rep instead of the person who actually wrote
+ * in. Tries, in order: a structured contact-form "Name:" field, a Gmail
+ * "Name email@domain via ..." forwarded-header line, and a "'Name' via
+ * ..." forwarded-header line. Returns null (caller falls back to
+ * resolveCustomerName) when none match, e.g. for a direct customer email
+ * with no forwarding involved.
+ */
+export function extractForwardedCustomerName(body: string): string | null {
+  const structured = body.match(/\*?Name:?\*?\s*([A-Za-z][A-Za-z\s.'-]{1,40}?)\s*(?:\n|\*[A-Za-z]+:\*)/i);
+  if (structured) return structured[1].trim();
+
+  const withEmail = body.match(/^\s*['"]?([A-Z][\w.'-]+(?:\s[A-Z][\w.'-]+){0,2})['"]?\s+[\w.+-]+@[\w.-]+\.\w+\s+via\b/m);
+  if (withEmail) return withEmail[1].trim();
+
+  const quoted = body.match(/^\s*'?([A-Z][\w.'-]+(?:\s[A-Z][\w.'-]+){0,2})'\s+via\b/m);
+  if (quoted) return quoted[1].trim();
+
+  return null;
+}
+
+/**
+ * Strips forwarding/signature boilerplate from an email body before it's
+ * used for keyword matching or sent to the AI. A rep's own signature (phone
+ * number, address, brand name, awards, social links) repeats verbatim on
+ * every email they forward, so left in, it can match a template's keywords
+ * purely on brand-name overlap regardless of what the actual customer
+ * wrote -- and can bury the real complaint past the word budget sent to
+ * OpenAI when the signature/forward envelope comes first. Handles both
+ * layouts seen in practice: real content first then a "-- " signature, and
+ * a rep's signature first then a Gmail "---------- Forwarded message
+ * ---------" block containing the real content.
+ */
+export function stripEmailBoilerplate(body: string): string {
+  let text = body;
+
+  const forwardMarker = text.indexOf('---------- Forwarded message ---------');
+  if (forwardMarker !== -1) {
+    const afterMarker = text.slice(forwardMarker).split('\n').slice(1);
+    let i = 0;
+    while (i < afterMarker.length && (/^(from|date|subject|to|cc):/i.test(afterMarker[i].trim()) || afterMarker[i].trim() === '')) i++;
+    text = afterMarker.slice(i).join('\n');
+  }
+
+  const sigMatch = text.match(/^--\s*$/m);
+  if (sigMatch?.index !== undefined) {
+    text = text.slice(0, sigMatch.index);
+  }
+
+  return text.trim() || body.trim();
+}
+
+/**
  * Best-effort deterministic extraction of an order number the customer
  * mentioned in their own email. Matches StyleCraft's own order ID formats
  * (e.g. "S000097815", "G000062862") as well as generic "order # 12345" /
@@ -284,25 +340,31 @@ export async function runKeywordMatcher(
  * function is the single source of truth for how the draft opens and ends.
  */
 function stripAIOwnFraming(text: string): string {
-  let lines = text.split('\n');
+  const original = text.trim();
+  let result = original;
 
-  const isGreetingLine = (l: string) => /^(dear|hi|hello)\b.*,?\s*$/i.test(l.trim());
-  const isSignOffLine = (l: string) => /^(best regards|kind regards|warm regards|regards|sincerely|thank you|thanks)\b,?\s*$/i.test(l.trim());
+  // Strip a leading greeting the model invented ("Dear Yoana," / "Hello,").
+  // Bounded to a short trailing name/phrase rather than an unbounded match
+  // through to end-of-line -- GPT sometimes returns the whole reply as a
+  // single line with no newlines at all, and an unbounded match would
+  // swallow the entire message as "just a greeting", not only its opening
+  // words.
+  result = result.replace(/^(dear|hi|hello)\b[^,.\n]{0,30}[,.]\s*/i, '');
 
-  while (lines.length && lines[0].trim() === '') lines.shift();
-  if (lines.length && isGreetingLine(lines[0])) {
-    lines.shift();
-    while (lines.length && lines[0].trim() === '') lines.shift();
-  }
+  // Strip a trailing sign-off the model invented ("Best regards,\n[Your
+  // Name]") through to the end of the message. Safe to match greedily to
+  // the end here (with `s` so `.` also consumes newlines) since nothing
+  // legitimate follows a sign-off -- this is what actually removes an
+  // invented "[Your Name]"/"[Your Position]" placeholder, which a
+  // line-by-line approach can miss when it shares a line with real content.
+  result = result.replace(/\s*(best regards|kind regards|warm regards|regards|sincerely)\b,?\s*[\s\S]*$/i, '');
 
-  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
-  const signOffIdx = lines.findIndex((l, i) => i >= lines.length - 3 && isSignOffLine(l));
-  if (signOffIdx !== -1) {
-    lines = lines.slice(0, signOffIdx);
-    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
-  }
+  result = result.trim();
 
-  return lines.join('\n').trim();
+  // Never let stripping produce nothing -- if greeting/sign-off removal
+  // ate the entire reply, keep the original text instead. A redundant
+  // greeting is a cosmetic issue; a blank customer-facing reply is not.
+  return result || original;
 }
 
 /**
@@ -478,7 +540,8 @@ async function classifyEmail(
   organizationId: string,
   parsedSenderName?: string | null
 ): Promise<ClassifiedEmail> {
-  const normalizedText = (subject + ' ' + body).toLowerCase();
+  const cleanBody = stripEmailBoilerplate(body);
+  const normalizedText = (subject + ' ' + cleanBody).toLowerCase();
 
   // 1. Language Detection
   let language = 'en';
@@ -515,7 +578,7 @@ async function classifyEmail(
   // 4. Sentiment Analysis
   let sentiment = 'NEUTRAL';
   const isAngryText = normalizedText.includes('sucks') || normalizedText.includes('terrible') || normalizedText.includes('broken') || normalizedText.includes('unacceptable') || normalizedText.includes('useless') || normalizedText.includes('fix this') || normalizedText.includes('immediately');
-  const isAllCaps = body.length > 10 && body === body.toUpperCase();
+  const isAllCaps = cleanBody.length > 10 && cleanBody === cleanBody.toUpperCase();
 
   if (isAngryText || isAllCaps) {
     sentiment = 'ANGRY';
@@ -545,15 +608,18 @@ async function classifyEmail(
   }
 
   const duplicate = await checkDuplicate(sender, subject, organizationId);
-  const customerName = resolveCustomerName(sender, parsedSenderName);
-  const orderNumber = extractOrderNumberFromText(`${subject} ${body}`);
+  const customerName = extractForwardedCustomerName(cleanBody) || resolveCustomerName(sender, parsedSenderName);
+  const orderNumber = extractOrderNumberFromText(`${subject} ${cleanBody}`);
 
   const settings = await prisma.settings.findUnique({ where: { organizationId } });
   const greeting = settings?.greeting || 'Hello';
   const closing = settings?.closing || 'Regards,\nStyleCraft US Support Team';
 
-  // Template match -- before anything touches the API.
-  const keywordMatch = await runKeywordMatcher(body, subject, organizationId);
+  // Template match -- before anything touches the API. Uses cleanBody so a
+  // forwarding rep's own signature (brand name, phone number, awards) can
+  // never contribute keyword-match signal regardless of what the actual
+  // customer wrote.
+  const keywordMatch = await runKeywordMatcher(cleanBody, subject, organizationId);
   let matched: ClassifiedEmail['matched'] = null;
   if (keywordMatch.matchedTemplateId) {
     const template = await prisma.template.findUnique({ where: { id: keywordMatch.matchedTemplateId } });
@@ -572,7 +638,7 @@ async function classifyEmail(
   return {
     language, category, sentiment, urgency, priority, spam, duplicate,
     customerName, orderNumber, greeting, closing, subject,
-    briefBody: first100Words(body), matched,
+    briefBody: first100Words(cleanBody), matched,
   };
 }
 
