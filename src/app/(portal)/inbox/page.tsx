@@ -14,7 +14,7 @@ import { BentoSection, BentoCard } from '@/components/MagicBento';
 export default function InboxPage() {
   const {
     emails, selectedEmail, selectEmail, fetchEmails,
-    approveDraft, rejectDraft, saveDraftEdits, regenerateDraft, sendCustomReply,
+    approveDraft, rejectDraft, saveDraftEdits, regenerateDraft, sendCustomReply, resendReply,
     changeEmailStatus, assignEmailUser, isLoading, user, settings,
     templates, fetchTemplates, saveTemplate, deleteEmail, archiveEmail, syncInbox, fetchDashboard,
     dashboardCharts, saveNote, workload, fetchWorkload
@@ -32,6 +32,9 @@ export default function InboxPage() {
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [customReply, setCustomReply] = useState('');
   const [isCustomMode, setIsCustomMode] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendText, setResendText] = useState('');
+  const [isSendingResend, setIsSendingResend] = useState(false);
   const [overrideTemplateName, setOverrideTemplateName] = useState<string | null>(null);
 
   // Searchable Dropdown override states
@@ -212,6 +215,8 @@ export default function InboxPage() {
       setShowKeywordForm(false);
       setOverrideTemplateName(null);
       setFlaggedWrong(false);
+      setIsResending(false);
+      setResendText('');
 
       // Initialize searchable dropdown query text
       const matchedTmpl = templates.find(t => t.id === selectedEmail.matchedTemplateId);
@@ -244,6 +249,18 @@ export default function InboxPage() {
     setCustomReply('');
     setIsCustomMode(false);
     showSendToast(`Reply sent to ${selectedEmail.sender}`);
+  };
+
+  const handleResend = async () => {
+    if (!selectedEmail || !resendText.trim()) return;
+    setIsSendingResend(true);
+    const success = await resendReply(selectedEmail.id, resendText);
+    setIsSendingResend(false);
+    if (success) {
+      setIsResending(false);
+      setResendText('');
+      showSendToast(`Corrected reply sent to ${selectedEmail.sender}`);
+    }
   };
 
   const handleSyncInbox = async () => {
@@ -803,6 +820,11 @@ export default function InboxPage() {
                 <p className="text-[11px] text-text-muted truncate mt-1">{email.preview}</p>
                 
                 <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
+                  {email.status === 'REPLIED' && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-success-bg border border-success/25 text-[9px] uppercase tracking-wider font-mono font-bold text-success" title="A reply has already been sent for this email">
+                      <CheckCheck className="w-3 h-3" /> Sent
+                    </span>
+                  )}
                   <span className={`px-2 py-0.5 rounded border text-[9px] uppercase tracking-wider font-mono ${getPriorityBadge(email.priority)}`}>
                     {email.priority}
                   </span>
@@ -1355,12 +1377,52 @@ export default function InboxPage() {
               {/* Sent reply history */}
               {sentReply && (
                 <div>
-                  <div className="px-3 py-1.5 bg-success-bg border border-success/25 rounded-t-xl text-[10px] font-semibold text-success uppercase tracking-wider flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-success" />
-                    Auto-Reply Sent Successfully
+                  <div className="px-3 py-1.5 bg-success-bg border border-success/25 rounded-t-xl text-[10px] font-semibold text-success uppercase tracking-wider flex justify-between items-center flex-wrap gap-2">
+                    <span className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-success" />
+                      Auto-Reply Sent Successfully
+                    </span>
+                    {!isResending && !isReadOnly && (
+                      <button
+                        onClick={() => { setResendText(sentReply.responseBody); setIsResending(true); }}
+                        className="flex items-center gap-1 text-[10px] text-success hover:text-success font-semibold cursor-pointer normal-case"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Wrong? Resend Corrected Reply
+                      </button>
+                    )}
                   </div>
-                  <div className="bg-success-bg border border-t-0 border-success/25 p-5 rounded-b-xl text-xs text-success whitespace-pre-wrap leading-relaxed">
-                    {sentReply.responseBody}
+                  <div className="bg-success-bg border border-t-0 border-success/25 rounded-b-xl overflow-hidden">
+                    {isResending ? (
+                      <div className="p-4 space-y-3">
+                        <textarea
+                          value={resendText}
+                          onChange={(e) => setResendText(e.target.value)}
+                          rows={8}
+                          autoFocus
+                          className="w-full bg-surface-2 border border-border-strong rounded-lg p-3 text-xs text-text-primary focus:outline-none focus:border-accent resize-none"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => { setIsResending(false); setResendText(''); }}
+                            className="px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary font-semibold cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleResend}
+                            disabled={isSendingResend || !resendText.trim()}
+                            className="flex items-center gap-1.5 px-4 py-1.5 bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-xs text-white rounded-lg font-semibold cursor-pointer transition-all"
+                          >
+                            <Send className="w-3.5 h-3.5" />
+                            {isSendingResend ? 'Sending...' : 'Send Corrected Reply'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="p-5 text-xs text-success whitespace-pre-wrap leading-relaxed">
+                        {sentReply.responseBody}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}

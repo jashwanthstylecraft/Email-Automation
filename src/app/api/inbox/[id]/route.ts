@@ -14,7 +14,7 @@ import {
 // else viewing an assigned email is read-only. SUBMIT_FEEDBACK is included
 // since accuracy feedback is "work" on the email, not passive viewing.
 const OWNER_ONLY_ACTIONS = new Set([
-  'APPROVE', 'EDIT_DRAFT', 'SEND_CUSTOM', 'REJECT', 'REGENERATE',
+  'APPROVE', 'EDIT_DRAFT', 'SEND_CUSTOM', 'REJECT', 'REGENERATE', 'RESEND',
   'CHANGE_STATUS', 'ASSIGN_TEMPLATE', 'ARCHIVE', 'SUBMIT_FEEDBACK', 'FILL_TEMPLATE',
 ]);
 
@@ -404,6 +404,50 @@ export async function POST(
       });
 
       return NextResponse.json({ success: true, message: 'Custom reply sent' });
+    }
+
+    if (action === 'RESEND') {
+      // Correcting a mistake in an already-sent reply: send the fixed text
+      // as a fresh outgoing email and record it as a new SENT row, so the
+      // original (wrong) send and the correction both stay in the history
+      // rather than the original being silently overwritten.
+      if (!responseBody || !responseBody.trim()) {
+        return NextResponse.json({ error: 'A corrected reply body is required' }, { status: 400 });
+      }
+
+      await prisma.autoReply.create({
+        data: {
+          emailId: id,
+          status: 'SENT',
+          responseBody,
+          originalDraftBody: responseBody,
+          sentAt: new Date(),
+          approvedBy: user?.email || null,
+        },
+      });
+
+      await prisma.email.update({
+        where: { id },
+        data: { status: 'REPLIED', lastActionByUserId: user?.id || null, lastActionAt: new Date() },
+      });
+
+      try {
+        await sendOutgoingMail(email.sender, email.subject, responseBody);
+      } catch (sendErr) {
+        console.error('Failed to send resent SMTP email:', sendErr);
+      }
+
+      await logAudit({
+        action: 'REPLY_RESENT',
+        user,
+        entityType: 'email',
+        entityId: email.id,
+        afterValue: responseBody,
+        ipAddress: ip,
+        details: `${user?.email || 'Unknown user'} resent a corrected reply to ${email.sender}`,
+      });
+
+      return NextResponse.json({ success: true, message: 'Corrected reply sent' });
     }
 
     if (action === 'REJECT') {

@@ -114,6 +114,7 @@ interface AppState {
   saveDraftEdits: (emailId: string, text: string) => Promise<void>;
   regenerateDraft: (emailId: string, tone: string) => Promise<boolean>;
   sendCustomReply: (emailId: string, text: string) => Promise<void>;
+  resendReply: (emailId: string, text: string) => Promise<boolean>;
   changeEmailStatus: (emailId: string, status: string) => Promise<void>;
   deleteEmail: (emailId: string) => Promise<void>;
   archiveEmail: (emailId: string) => Promise<void>;
@@ -378,6 +379,26 @@ export const useStore = create<AppState>((set, get) => ({
       }
     } catch (err: any) {
       set({ error: err.message });
+    }
+  },
+
+  resendReply: async (emailId, text) => {
+    try {
+      const res = await fetch(`/api/inbox/${emailId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'RESEND', responseBody: text }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await get().fetchEmails();
+        return true;
+      }
+      set({ error: data.error });
+      return false;
+    } catch (err: any) {
+      set({ error: err.message });
+      return false;
     }
   },
 
