@@ -470,21 +470,12 @@ export default function InboxPage() {
   // times -- one step above the existing "N emails from sender" pill (which
   // already appears at totalEmails > 1), so the two badges don't overlap.
   const FREQUENT_SENDER_THRESHOLD = 3;
-  const PRIORITY_RANK: Record<string, number> = { URGENT: 3, HIGH: 2, MEDIUM: 1, LOW: 0 };
   const isPrioritySender = (email: any) => (email.customer?.totalEmails ?? 0) >= FREQUENT_SENDER_THRESHOLD;
 
-  // Presentation-only reordering on top of the API's createdAt-desc order:
-  // urgent/high-priority mail and frequent senders float to the top of
-  // whichever mailbox tab/filter is currently showing, newest-first within
-  // each group. Does not touch fetching, filtering, or the underlying data.
+  // Straight newest-first order by received date/time. Does not touch
+  // fetching, filtering, or the underlying data.
   const sortedEmails = useMemo(() => {
-    return [...emails].sort((a: any, b: any) => {
-      const rankDiff = (PRIORITY_RANK[b.priority] ?? 0) - (PRIORITY_RANK[a.priority] ?? 0);
-      if (rankDiff !== 0) return rankDiff;
-      const priorityDiff = Number(isPrioritySender(b)) - Number(isPrioritySender(a));
-      if (priorityDiff !== 0) return priorityDiff;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+    return [...emails].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [emails]);
 
   const getSentimentColor = (s: string) => {
