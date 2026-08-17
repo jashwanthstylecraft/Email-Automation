@@ -131,6 +131,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
               status: 'UNREAD',
               gmailCategory: 'primary',
               organizationId: inbox.organizationId,
+              createdAt: emailDate,
             },
           });
 
