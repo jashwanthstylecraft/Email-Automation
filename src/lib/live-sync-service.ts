@@ -5,6 +5,13 @@ import { runAIPipelineBatch } from './ai-pipeline';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
 import { assignEmailRoundRobin } from './assignment-service';
 
+// The connected mailbox for this deployment is a personal Gmail account
+// rather than a dedicated support inbox, so real customer inquiries only
+// ever arrive forwarded from these two reps -- everything else is unrelated
+// personal mail. Matched as a case-insensitive substring of the sender
+// address.
+const ALLOWED_SENDERS = ['susan@stylecraftus.com', 'sakif@stylecraftus.com'];
+
 /**
  * Connects to the live IMAP server using environment configurations,
  * fetches all unseen emails, and processes them through the StyleCraft AI engine.
@@ -97,6 +104,17 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
           // Promotional/social/list mail is never a real customer inquiry --
           // discard it outright instead of importing it into the inbox.
           console.log(`Discarded promotional/social/list email from ${senderEmail}: ${subject}`);
+          await client.messageFlagsAdd({ seq }, ['\\Seen']);
+          continue;
+        }
+
+        // 1b. Sender allow-list -- this connected mailbox is a personal Gmail
+        // account, not a dedicated support inbox, so it's mixed in with
+        // unrelated personal mail. Only these reps' forwarded customer
+        // contact-form submissions are real support content; everything else
+        // gets discarded the same way promotional mail does.
+        if (!ALLOWED_SENDERS.some((allowed) => senderEmail.toLowerCase().includes(allowed))) {
+          console.log(`Discarded non-allow-listed sender ${senderEmail}: ${subject}`);
           await client.messageFlagsAdd({ seq }, ['\\Seen']);
           continue;
         }

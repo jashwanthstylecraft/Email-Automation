@@ -803,8 +803,8 @@ export default function InboxPage() {
                     >
                       <Save className="w-3.5 h-3.5" />
                     </button>
-                    <span className="text-[9px] text-text-muted whitespace-nowrap">
-                      {new Date(email.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <span className="text-[9px] text-text-muted whitespace-nowrap" title={new Date(email.createdAt).toLocaleString()}>
+                      {new Date(email.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}, {new Date(email.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                 </div>
