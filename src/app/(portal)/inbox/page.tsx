@@ -136,23 +136,27 @@ export default function InboxPage() {
     fetchTemplates();
   }, [activeFilter, search, activeCategory]);
 
-  // Keep the inbox list live: poll for newly-synced emails every 30s so a
-  // background sync (cron or another agent clicking "Sync Inbox") shows up
-  // without a manual reload. Skipped while actively editing/composing a
-  // reply -- fetchEmails() returns fresh object references for every email,
-  // and the effect below that resets replyText/isEditingDraft depends on
-  // the whole selectedEmail object, so polling during an in-progress edit
-  // would silently wipe out unsaved changes.
-  const pollGuardRef = useRef({ isEditingDraft, isCustomMode, activeFilter, search, activeCategory });
+  // Keep the inbox genuinely live: actively poll the real mailbox (not just
+  // re-read our own DB) every 30s, so new mail shows up without waiting on
+  // Vercel's once-a-day cron or someone clicking "Sync Inbox" by hand.
+  // syncInbox() hits IMAP, pulls in anything new, then internally calls
+  // fetchEmails() which reuses the last explicit filters -- so the current
+  // tab/search/category view is preserved automatically. Skipped while
+  // actively editing/composing a reply -- fetchEmails() returns fresh
+  // object references for every email, and the effect below that resets
+  // replyText/isEditingDraft depends on the whole selectedEmail object, so
+  // polling during an in-progress edit would silently wipe out unsaved
+  // changes.
+  const pollGuardRef = useRef({ isEditingDraft, isCustomMode });
   useEffect(() => {
-    pollGuardRef.current = { isEditingDraft, isCustomMode, activeFilter, search, activeCategory };
-  }, [isEditingDraft, isCustomMode, activeFilter, search, activeCategory]);
+    pollGuardRef.current = { isEditingDraft, isCustomMode };
+  }, [isEditingDraft, isCustomMode]);
 
   useEffect(() => {
     const interval = setInterval(() => {
       const g = pollGuardRef.current;
       if (g.isEditingDraft || g.isCustomMode) return;
-      fetchEmails({ status: g.activeFilter, search: g.search, category: g.activeCategory });
+      syncInbox();
     }, 30000);
     return () => clearInterval(interval);
   }, []);
