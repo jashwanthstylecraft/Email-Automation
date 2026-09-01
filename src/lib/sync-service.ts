@@ -1,7 +1,6 @@
 import { prisma } from './prisma';
 import { runAIPipeline } from './ai-pipeline';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
-import { assignEmailRoundRobin } from './assignment-service';
 
 const MOCK_INCOMING_TEMPLATES = [
   {
@@ -126,6 +125,7 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
     data: {
       language: aiResult.language,
       category: aiResult.category,
+      businessType: aiResult.businessType,
       sentiment: aiResult.sentiment,
       urgency: aiResult.urgency,
       priority: aiResult.priority,
@@ -154,8 +154,8 @@ export async function syncNewMockEmail(inboxId: string): Promise<any> {
     });
   }
 
-  // 4b. Round-robin assign to whichever support agent has the fewest open emails right now.
-  await assignEmailRoundRobin(inbox.organizationId, processedEmail.id);
+  // 4b. Emails arrive unassigned -- claimed by whichever agent opens them
+  // first (see GET handler in api/inbox/[id]/route.ts), not auto-assigned here.
 
   // 5. Create structured audit log record
   const isManualReview = aiResult.aiConfidence < 0.85;

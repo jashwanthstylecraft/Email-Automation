@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { syncOrgInbox } from '@/lib/inbox-sync';
 import { getCurrentUser, isAdmin, getClientIp } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
-import { rebalanceOpenEmails } from '@/lib/assignment-service';
 
 export async function GET(request: Request) {
   try {
@@ -30,8 +29,13 @@ export async function GET(request: Request) {
     // that need a different filter entirely.
     if (status === 'INBOX' || !status) {
       // The inbox proper: only mail that still needs action. Replied
-      // (handled) and escalated/archived mail lives in its own tabs.
+      // (handled) and escalated/archived mail lives in its own tabs. This
+      // is the B2C "main inbox" -- business inquiries live in the B2B tab.
       where.status = { in: ['UNREAD', 'WAITING'] };
+      where.businessType = 'B2C';
+    } else if (status === 'B2B') {
+      where.status = { in: ['UNREAD', 'WAITING'] };
+      where.businessType = 'B2B';
     } else if (status === 'PRIMARY') {
       where.gmailCategory = 'primary';
       where.status = { not: 'ESCALATED' };
@@ -98,22 +102,6 @@ export async function POST(request: Request) {
         details: `${user?.email || 'Admin'} purged ${count} spam/promotional email(s) from the inbox`,
       });
       return NextResponse.json({ success: true, deletedCount: count });
-    }
-
-    if (action === 'REBALANCE_ASSIGNMENTS') {
-      const user = await getCurrentUser();
-      if (!isAdmin(user)) {
-        return NextResponse.json({ error: 'Only an admin can rebalance assignments.' }, { status: 403 });
-      }
-      const { reassignedCount, counts } = await rebalanceOpenEmails(orgId, user?.email || null);
-      await logAudit({
-        action: 'ASSIGNMENTS_REBALANCED',
-        user,
-        entityType: 'email',
-        ipAddress: getClientIp(request),
-        details: `${user?.email || 'Admin'} rebalanced ${reassignedCount} open email(s) evenly across support agents: ${JSON.stringify(counts)}`,
-      });
-      return NextResponse.json({ success: true, reassignedCount, counts });
     }
 
     const result = await syncOrgInbox(orgId);

@@ -6,6 +6,7 @@ import { openai, OPENAI_MODEL, OPENAI_MAX_TOKENS, OPENAI_TEMPERATURE } from './o
 export interface AIPipelineResult {
   language: string;
   category: string;
+  businessType: string;
   sentiment: string;
   urgency: string;
   priority: string;
@@ -19,6 +20,16 @@ export interface AIPipelineResult {
 }
 
 const FALLBACK_RESPONSE = "Thank you for contacting StyleCraft Support. We have received your email, but we require more information or our team needs to review your request manually. A representative will follow up with you shortly.";
+
+// Wholesale/distributor/reseller language -- distinguishes a business
+// inquiry from a regular individual customer. Overlaps with
+// keyword-engine.ts's INTENT_TERMS (distributor, wholesale, dealer,
+// reseller, bulk order) plus a few more unambiguous B2B-only signals.
+export const B2B_SIGNAL_TERMS = [
+  'distributor', 'wholesale', 'dealer', 'reseller', 'bulk order',
+  'purchase order', 'moq', 'minimum order quantity', 'resale certificate',
+  'tax id', 'business license', 'net 30', 'b2b',
+];
 
 // Kept short and reply-focused on purpose -- classification (language,
 // category, sentiment, urgency, priority) is handled by free local
@@ -511,6 +522,7 @@ export async function generateToneAdjustedReply(
 interface ClassifiedEmail {
   language: string;
   category: string;
+  businessType: string;
   sentiment: string;
   urgency: string;
   priority: string;
@@ -575,6 +587,12 @@ async function classifyEmail(
     category = 'Technical Issue';
   }
 
+  // 3b. Business Type Detection (B2C vs B2B) -- wholesale/distributor/
+  // reseller language vs. regular individual-customer language. Seeded from
+  // the B2B-flavored terms already present in keyword-engine.ts's
+  // INTENT_TERMS list, extended with a few more unambiguous B2B signals.
+  const businessType = B2B_SIGNAL_TERMS.some((term) => normalizedText.includes(term)) ? 'B2B' : 'B2C';
+
   // 4. Sentiment Analysis
   let sentiment = 'NEUTRAL';
   const isAngryText = normalizedText.includes('sucks') || normalizedText.includes('terrible') || normalizedText.includes('broken') || normalizedText.includes('unacceptable') || normalizedText.includes('useless') || normalizedText.includes('fix this') || normalizedText.includes('immediately');
@@ -636,7 +654,7 @@ async function classifyEmail(
   }
 
   return {
-    language, category, sentiment, urgency, priority, spam, duplicate,
+    language, category, businessType, sentiment, urgency, priority, spam, duplicate,
     customerName, orderNumber, greeting, closing, subject,
     briefBody: first100Words(cleanBody), matched,
   };
@@ -645,7 +663,7 @@ async function classifyEmail(
 function matchedToResult(c: ClassifiedEmail): AIPipelineResult {
   const m = c.matched!;
   return {
-    language: c.language, category: c.category, sentiment: c.sentiment, urgency: c.urgency, priority: c.priority,
+    language: c.language, category: c.category, businessType: c.businessType, sentiment: c.sentiment, urgency: c.urgency, priority: c.priority,
     aiConfidence: m.confidence, spam: c.spam, duplicate: c.duplicate, draftReply: m.draftReply,
     summary: m.summary, matchedTemplateId: m.templateId, aiProvider: 'Keyword Matcher',
   };
@@ -654,7 +672,7 @@ function matchedToResult(c: ClassifiedEmail): AIPipelineResult {
 function finalizeUnmatchedResult(c: ClassifiedEmail, replyText: string, aiProvider: string): AIPipelineResult {
   const draftReply = wrapResponseWithGreetingAndClosing(replyText, c.customerName, c.greeting, c.closing, { orderNumber: c.orderNumber });
   return {
-    language: c.language, category: c.category, sentiment: c.sentiment, urgency: c.urgency, priority: c.priority,
+    language: c.language, category: c.category, businessType: c.businessType, sentiment: c.sentiment, urgency: c.urgency, priority: c.priority,
     aiConfidence: 0.5, spam: c.spam, duplicate: c.duplicate, draftReply,
     summary: `Customer inquiry regarding: ${c.subject}`, matchedTemplateId: null, aiProvider,
   };

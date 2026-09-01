@@ -3,7 +3,6 @@ import { simpleParser } from 'mailparser';
 import { prisma } from './prisma';
 import { runAIPipelineBatch } from './ai-pipeline';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
-import { assignEmailRoundRobin } from './assignment-service';
 
 // The connected mailbox for this deployment is a personal Gmail account
 // rather than a dedicated support inbox, so real customer inquiries only
@@ -214,6 +213,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             data: {
               language: aiResult.language,
               category: aiResult.category,
+              businessType: aiResult.businessType,
               sentiment: aiResult.sentiment,
               urgency: aiResult.urgency,
               priority: aiResult.priority,
@@ -242,8 +242,9 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             });
           }
 
-          // Round-robin assign to whichever support agent has the fewest open emails right now.
-          await assignEmailRoundRobin(inbox.organizationId, processedEmail.id);
+          // Emails arrive unassigned -- claimed by whichever agent opens
+          // them first (see GET handler in api/inbox/[id]/route.ts), not
+          // auto-assigned here.
 
           // Create structured audit log record
           const isManualReview = aiResult.aiConfidence < 0.85;

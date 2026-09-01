@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
 import { BentoSection, BentoCard } from '@/components/MagicBento';
@@ -465,7 +465,8 @@ export default function InboxPage() {
   // "Inbox" (the default) shows only active/upcoming mail that still needs
   // action; handled and archived mail lives in the Sent / Deleted tabs.
   const filterTabs = [
-    { label: 'Inbox', value: 'INBOX', icon: InboxIcon },
+    { label: 'Inbox (B2C)', value: 'INBOX', icon: InboxIcon },
+    { label: 'B2B', value: 'B2B', icon: Briefcase },
     { label: 'All', value: 'ALL', icon: Mail },
     { label: 'Primary', value: 'PRIMARY', icon: CircleDot },
     { label: 'Drafts', value: 'DRAFTS', icon: FileEdit },

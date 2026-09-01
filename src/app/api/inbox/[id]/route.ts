@@ -108,21 +108,31 @@ export async function GET(
     }
 
     // Assignment / collision-prevention: an email with nobody assigned yet
-    // gets picked up through the SAME round-robin balancer used at sync
-    // time (never handed straight to whoever happens to open it -- that
-    // was silently defeating round-robin fairness). Once assigned, the
-    // owner opening it refreshes their "currently viewing" lock. Admins
-    // browse without ever seizing ownership -- they only reassign
-    // explicitly via the ASSIGN_USER action.
+    // is claimed by whoever opens it first (no round-robin fairness math --
+    // just first-come-first-served ownership, enough to stop two agents
+    // from working the same email at once). Once assigned, the owner
+    // opening it refreshes their "currently viewing" lock. Admins browse
+    // without ever seizing ownership -- they only reassign explicitly via
+    // the ASSIGN_USER action.
     const currentUser = await getCurrentUser();
     const includeArgs = { autoReplies: { orderBy: { createdAt: 'desc' as const } }, customer: true };
     if (currentUser && !isAdmin(currentUser)) {
       const now = new Date();
       if (!email.assignedUserId) {
-        const { assignEmailRoundRobin } = await import('@/lib/assignment-service');
-        await assignEmailRoundRobin(email.organizationId, email.id);
-        const refreshed = await prisma.email.findUnique({ where: { id: email.id }, include: includeArgs });
-        if (refreshed) email = refreshed;
+        email = await prisma.email.update({
+          where: { id: email.id },
+          data: { assignedUserId: currentUser.id, assignedAt: now },
+          include: includeArgs,
+        });
+        await prisma.assignmentLog.create({
+          data: {
+            emailId: email.id,
+            assignedToUserId: currentUser.id,
+            assignedToName: currentUser.email,
+            assignedBy: 'claim_on_open',
+            assignmentMethod: 'claim_on_open',
+          },
+        });
       }
       if (email.assignedUserId === currentUser.id) {
         email = await prisma.email.update({

@@ -109,6 +109,7 @@ model Email {
   priority        String       @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
   sentiment       String       @default("NEUTRAL") // POSITIVE, NEUTRAL, NEGATIVE, ANGRY
   category        String       @default("General Inquiry") // Sales, Support, Billing, Refund, Complaint, Technical, HR, etc.
+  businessType    String       @default("B2C") // B2C or B2B, heuristic-classified from content
   language        String       @default("en")
   aiConfidence    Float        @default(0.0)
   spam            Boolean      @default(false)
