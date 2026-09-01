@@ -14,6 +14,7 @@ export interface Email {
   id: string;
   sender: string;
   recipient: string;
+  cc?: string | null;
   subject: string;
   body: string;
   preview: string;
@@ -266,12 +267,24 @@ export const useStore = create<AppState>((set, get) => ({
       const data = await res.json();
       set({ emails: data.emails, isLoading: false });
       
-      // Keep selected email updated
+      // Keep selected email updated. It may have fallen out of the current
+      // filtered view -- e.g. it just transitioned to REPLIED while viewing
+      // the INBOX-only tab -- so fetch its own detail directly rather than
+      // leaving the open panel stuck showing pre-action data.
       const selected = get().selectedEmail;
       if (selected) {
         const updatedSelected = data.emails.find((e: Email) => e.id === selected.id);
         if (updatedSelected) {
           set({ selectedEmail: updatedSelected });
+        } else {
+          fetch(`/api/inbox/${selected.id}`)
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.email && get().selectedEmail?.id === selected.id) {
+                set({ selectedEmail: d.email });
+              }
+            })
+            .catch(() => {});
         }
       }
     } catch (err: any) {

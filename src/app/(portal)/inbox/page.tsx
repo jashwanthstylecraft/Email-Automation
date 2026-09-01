@@ -265,6 +265,26 @@ export default function InboxPage() {
     }
   };
 
+  // "Previous Emails from this Sender" rows only carry a subject/date/status
+  // summary -- jump to the full email (with its own reply history) either
+  // from what's already loaded, or by fetching it directly if it fell
+  // outside the current tab's filter (e.g. it's sitting in the Replied tab
+  // while viewing the main Inbox tab).
+  const handleViewThreadEmail = async (emailId: string) => {
+    const existing = emails.find((e) => e.id === emailId);
+    if (existing) {
+      selectEmail(existing);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/inbox/${emailId}`);
+      const data = await res.json();
+      if (data.email) selectEmail(data.email);
+    } catch {
+      // Leave the current selection in place on failure.
+    }
+  };
+
   const handleSyncInbox = async () => {
     const result = await syncInbox();
     setLastSyncedAt(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -507,7 +527,12 @@ export default function InboxPage() {
   };
 
   const latestDraft = selectedEmail?.autoReplies?.find((r) => r.status === 'DRAFT');
-  const sentReply = selectedEmail?.autoReplies?.find((r) => r.status === 'SENT');
+  // autoReplies comes back newest-first, so [0] is the most recent send --
+  // the one eligible for "resend corrected reply". Everything after it is
+  // older outbound history, shown read-only below it.
+  const sentReplies = selectedEmail?.autoReplies?.filter((r) => r.status === 'SENT') || [];
+  const sentReply = sentReplies[0];
+  const olderSentReplies = sentReplies.slice(1);
 
   // Tone is per-email, not global: default to whatever this draft was last
   // generated with, falling back to the org-wide Settings.tone, whenever a
@@ -944,10 +969,19 @@ export default function InboxPage() {
                       <span className="text-text-muted uppercase font-semibold text-[9px]">Previous Emails from this Sender:</span>
                       <div className="space-y-1.5 mt-2 max-h-32 overflow-y-auto">
                         {threadContext.map((t: any) => (
-                          <div key={t.id} className="flex justify-between items-center bg-surface-2 p-2 rounded text-[10px]">
-                            <span className="text-text-secondary truncate max-w-[70%]">{t.subject}</span>
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => handleViewThreadEmail(t.id)}
+                            className="w-full flex justify-between items-center gap-2 bg-surface-2 hover:bg-surface-3 hover:border-accent-border border border-transparent p-2 rounded text-[10px] text-left transition-colors cursor-pointer"
+                            title="Open this email"
+                          >
+                            <span className="text-text-secondary truncate max-w-[55%]">{t.subject}</span>
+                            {t.status === 'REPLIED' && (
+                              <span className="text-[8px] uppercase font-mono font-bold text-success flex-shrink-0">Replied</span>
+                            )}
                             <span className="text-text-muted text-[9px] flex-shrink-0">{new Date(t.createdAt).toLocaleDateString()}</span>
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </div>
@@ -1197,8 +1231,20 @@ export default function InboxPage() {
                   <Mail className="w-3.5 h-3.5 text-text-secondary" />
                   Original Message Body
                 </div>
-                <div className="bg-bg border border-t-0 border-border p-5 rounded-b-xl text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">
-                  {selectedEmail.body}
+                <div className="bg-bg border border-t-0 border-border rounded-b-xl">
+                  {(selectedEmail.recipient || selectedEmail.cc) && (
+                    <div className="px-5 pt-4 pb-3 border-b border-border space-y-1 text-[10px] font-mono">
+                      {selectedEmail.recipient && (
+                        <p className="text-text-muted"><span className="uppercase font-semibold">To:</span> <span className="text-text-secondary">{selectedEmail.recipient}</span></p>
+                      )}
+                      {selectedEmail.cc && (
+                        <p className="text-text-muted"><span className="uppercase font-semibold">Cc:</span> <span className="text-text-secondary">{selectedEmail.cc}</span></p>
+                      )}
+                    </div>
+                  )}
+                  <div className="p-5 text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">
+                    {selectedEmail.body}
+                  </div>
                 </div>
               </div>
 
@@ -1388,7 +1434,7 @@ export default function InboxPage() {
                   <div className="px-3 py-1.5 bg-accent-bg border border-accent-border rounded-t-xl text-[10px] font-semibold text-accent-text uppercase tracking-wider flex justify-between items-center">
                     <span className="flex items-center gap-1.5">
                       <Edit3 className="w-3.5 h-3.5 text-accent-text" />
-                      Compose Custom Response
+                      {sentReply ? 'Compose Follow-Up Reply' : 'Compose Custom Response'}
                     </span>
                     <button onClick={() => setIsCustomMode(false)} className="text-xs text-text-secondary hover:text-text-primary font-semibold cursor-pointer">
                       Cancel
@@ -1478,17 +1524,44 @@ export default function InboxPage() {
                   </div>
                 </div>
               )}
+
+              {/* Earlier replies in this conversation -- read-only, newest of these first */}
+              {olderSentReplies.length > 0 && (
+                <div>
+                  <div className="px-3 py-1.5 bg-surface-2 border border-border rounded-t-xl text-[10px] font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-text-secondary" />
+                    Earlier Replies ({olderSentReplies.length})
+                  </div>
+                  <div className="bg-bg border border-t-0 border-border rounded-b-xl divide-y divide-border">
+                    {olderSentReplies.map((r: any) => (
+                      <div key={r.id} className="p-4 space-y-2">
+                        <EmailBodyPreview
+                          body={r.responseBody}
+                          images={matchedTemplateImages}
+                          className="text-xs text-text-secondary whitespace-pre-wrap leading-relaxed"
+                        />
+                        {r.approvedBy && (
+                          <p className="text-[10px] text-text-muted border-t border-border pt-2">
+                            Sent by <span className="text-text-secondary font-medium">{r.approvedBy}</span>
+                            {r.sentAt && <> · {new Date(r.sentAt).toLocaleString()}</>}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Bottom Footer Actions */}
             <div className="p-6 border-t border-border bg-bg flex justify-between items-center gap-4 flex-shrink-0">
               <div className="flex gap-2">
-                {!sentReply && !isCustomMode && !isReadOnly && (
+                {!isCustomMode && !isReadOnly && (
                   <button
                     onClick={() => setIsCustomMode(true)}
                     className="px-4 py-2 border border-border hover:border-accent-border bg-surface-2 hover:bg-surface-3 text-xs rounded-lg font-semibold text-text-secondary hover:text-text-primary transition-all cursor-pointer"
                   >
-                    Write Manual Reply
+                    {sentReply ? 'Reply Again' : 'Write Manual Reply'}
                   </button>
                 )}
                 <button

@@ -104,6 +104,7 @@ model Email {
   customer        Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   sender          String
   recipient       String
+  cc              String?      // comma-separated CC'd addresses from the original inbound message
   subject         String
   body            String
   preview         String

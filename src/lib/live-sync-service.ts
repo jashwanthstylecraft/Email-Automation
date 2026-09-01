@@ -74,6 +74,10 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         const subject = parsed.subject || '(No Subject)';
         const body = parsed.text || '';
         const previewText = body.slice(0, 100) + (body.length > 100 ? '...' : '');
+        const messageId = parsed.messageId || null;
+        const ccAddresses = parsed.cc
+          ? (Array.isArray(parsed.cc) ? parsed.cc : [parsed.cc]).flatMap((c) => c.value.map((v) => v.address)).filter(Boolean).join(', ')
+          : null;
 
         // 1. Gmail category / Precedence filters (Only pull Primary & Updates)
         const gmailLabels = parsed.headers.get('x-gmail-labels');
@@ -126,22 +130,33 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
           continue;
         }
 
-        // Check if email already imported to avoid duplicate loops
-        const exists = await prisma.email.findFirst({
-          where: {
-            sender: senderEmail,
-            subject: subject,
-            createdAt: {
-              gte: new Date(Date.now() - 60 * 60 * 1000), // check within the last hour
-            },
-          },
-        });
+        // Check if this exact message was already imported (e.g. a repeated
+        // sync pass before IMAP's \Seen flag propagated). Keyed on the
+        // message's own globally-unique Message-ID, NOT sender+subject+time --
+        // that older heuristic silently discarded a customer's genuine
+        // follow-up reply whenever it reused the same subject line within an
+        // hour (e.g. any "Re: <original subject>"), which is extremely common
+        // and was actively losing real customer messages. A message without
+        // a Message-ID (rare, but technically legal) falls back to a short
+        // 2-minute sender+subject window, tight enough to catch an accidental
+        // re-fetch of the same message without blocking a real follow-up.
+        const exists = messageId
+          ? await prisma.email.findFirst({ where: { organizationId: inbox.organizationId, externalId: messageId } })
+          : await prisma.email.findFirst({
+              where: {
+                sender: senderEmail,
+                subject: subject,
+                createdAt: { gte: new Date(Date.now() - 2 * 60 * 1000) },
+              },
+            });
 
         if (!exists) {
           const newEmail = await prisma.email.create({
             data: {
+              externalId: messageId,
               sender: senderEmail,
               recipient: inbox.emailAddress,
+              cc: ccAddresses,
               subject: subject,
               body: body,
               preview: previewText,
