@@ -11,10 +11,28 @@ import {
 } from 'lucide-react';
 import { StructuredKeywords, parseKeywords, serializeKeywords, emptyKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
 import EmailBodyPreview from '@/components/EmailBodyPreview';
+import mammoth from 'mammoth';
 
 interface TemplateImage {
   id: string;
   dataUrl: string;
+}
+
+// Heuristic subject detection: a short first line, followed by a blank line,
+// reads like a title/subject rather than the start of a paragraph.
+function splitSubjectAndBody(rawText: string): { subject: string | null; body: string } {
+  const normalized = rawText.replace(/\r\n/g, '\n').trim();
+  const firstBreak = normalized.indexOf('\n\n');
+  if (firstBreak === -1) return { subject: null, body: normalized };
+
+  const firstLine = normalized.slice(0, firstBreak).trim();
+  const rest = normalized.slice(firstBreak).trim();
+  const looksLikeTitle = firstLine.length > 0 && firstLine.length <= 120 && !firstLine.includes('\n');
+
+  if (looksLikeTitle && rest.length > 0) {
+    return { subject: firstLine, body: rest };
+  }
+  return { subject: null, body: normalized };
 }
 
 const KEYWORD_CATEGORIES: { key: keyof StructuredKeywords; label: string; hint: string }[] = [
@@ -76,46 +94,60 @@ export default function TemplatesPage() {
     }
   };
 
-  const handleDocxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDocxUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file later
     if (!file) return;
 
     setDocxError(null);
     setIsParsingDocx(true);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const res = await fetch('/api/templates/parse-docx', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileBase64: reader.result }),
-        });
-        const data = await res.json();
-        if (!res.ok || !data.success) {
-          setDocxError(data.error || 'Failed to read this document.');
-          return;
+    try {
+      // Parsed entirely in the browser (mammoth's browser build) rather than
+      // uploaded to a server route -- a Word doc with a few real photos
+      // easily produces a base64 payload past Vercel's serverless function
+      // request-size limit (4.5MB), which previously failed with an opaque
+      // "Failed to read this document." on anything but a tiny file.
+      const arrayBuffer = await file.arrayBuffer();
+
+      const extractedImages: TemplateImage[] = [];
+      let imageCounter = 0;
+      await mammoth.convertToHtml(
+        { arrayBuffer },
+        {
+          convertImage: mammoth.images.imgElement(async (image: any) => {
+            const base64 = await image.read('base64');
+            const id = `docx${Date.now().toString(36)}${(imageCounter++).toString(36)}`;
+            extractedImages.push({ id, dataUrl: `data:${image.contentType};base64,${base64}` });
+            return { src: '' };
+          }),
         }
-        // Adds to whatever is already in the editor -- name/subject/body/
-        // images/keywords already present are never overwritten or cleared,
-        // so uploading a document (including a second one) only appends new
-        // content instead of replacing the template being worked on.
-        setName((prev) => prev || file.name.replace(/\.docx$/i, ''));
-        setSubject((prev) => prev || data.subject || '');
-        setBody((prev) => (prev.trim() ? `${prev}\n\n${data.body || ''}` : (data.body || '')));
-        setImages((prev) => [...prev, ...(data.images || [])]);
-        setIsFormOpen(true);
-      } catch {
-        setDocxError('Failed to read this document.');
-      } finally {
-        setIsParsingDocx(false);
+      );
+
+      const { value: rawText } = await mammoth.extractRawText({ arrayBuffer });
+      if (!rawText || !rawText.trim()) {
+        setDocxError('This document appears to be empty.');
+        return;
       }
-    };
-    reader.onerror = () => {
-      setDocxError('Failed to read this document.');
+
+      const { subject, body: parsedBody } = splitSubjectAndBody(rawText);
+      const newBody = extractedImages.length > 0
+        ? `${parsedBody}\n\n${extractedImages.map((img) => `{{image_${img.id}}}`).join('\n')}`
+        : parsedBody;
+
+      // Adds to whatever is already in the editor -- name/subject/body/
+      // images/keywords already present are never overwritten or cleared,
+      // so uploading a document (including a second one) only appends new
+      // content instead of replacing the template being worked on.
+      setName((prev) => prev || file.name.replace(/\.docx$/i, ''));
+      setSubject((prev) => prev || subject || '');
+      setBody((prev) => (prev.trim() ? `${prev}\n\n${newBody}` : newBody));
+      setImages((prev) => [...prev, ...extractedImages]);
+      setIsFormOpen(true);
+    } catch {
+      setDocxError('Could not read this file. Make sure it is a .docx Word document (older .doc files are not supported).');
+    } finally {
       setIsParsingDocx(false);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleCreateNew = () => {
