@@ -96,16 +96,14 @@ export default function TemplatesPage() {
           setDocxError(data.error || 'Failed to read this document.');
           return;
         }
-        setEditingId(null);
-        setName(file.name.replace(/\.docx$/i, ''));
-        setSubject(data.subject || '');
-        setBody(data.body || '');
-        setVariables('');
-        setKeywordsState(emptyKeywords());
-        setKeywordInputs({});
-        setActive(true);
-        setNotes('');
-        setImages(data.images || []);
+        // Adds to whatever is already in the editor -- name/subject/body/
+        // images/keywords already present are never overwritten or cleared,
+        // so uploading a document (including a second one) only appends new
+        // content instead of replacing the template being worked on.
+        setName((prev) => prev || file.name.replace(/\.docx$/i, ''));
+        setSubject((prev) => prev || data.subject || '');
+        setBody((prev) => (prev.trim() ? `${prev}\n\n${data.body || ''}` : (data.body || '')));
+        setImages((prev) => [...prev, ...(data.images || [])]);
         setIsFormOpen(true);
       } catch {
         setDocxError('Failed to read this document.');
