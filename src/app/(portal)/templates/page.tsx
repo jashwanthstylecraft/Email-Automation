@@ -7,7 +7,7 @@ import { useStore } from '@/lib/store';
 import {
   Plus, Edit, Trash, ToggleLeft, ToggleRight, Check, AlertTriangle,
   Terminal, ShieldCheck, HelpCircle, Save, Info, RefreshCw, MessageSquare, X, PartyPopper,
-  Image as ImageIcon, Upload
+  Image as ImageIcon, Upload, FileText, Loader2
 } from 'lucide-react';
 import { StructuredKeywords, parseKeywords, serializeKeywords, emptyKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
 import EmailBodyPreview from '@/components/EmailBodyPreview';
@@ -48,6 +48,8 @@ export default function TemplatesPage() {
   const [saveToast, setSaveToast] = useState<string | null>(null);
   const [images, setImages] = useState<TemplateImage[]>([]);
   const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isParsingDocx, setIsParsingDocx] = useState(false);
+  const [docxError, setDocxError] = useState<string | null>(null);
 
   // Simulator states
   const [testSelectedId, setTestSelectedId] = useState('');
@@ -74,6 +76,50 @@ export default function TemplatesPage() {
     }
   };
 
+  const handleDocxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-selecting the same file later
+    if (!file) return;
+
+    setDocxError(null);
+    setIsParsingDocx(true);
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const res = await fetch('/api/templates/parse-docx', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileBase64: reader.result }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          setDocxError(data.error || 'Failed to read this document.');
+          return;
+        }
+        setEditingId(null);
+        setName(file.name.replace(/\.docx$/i, ''));
+        setSubject(data.subject || '');
+        setBody(data.body || '');
+        setVariables('');
+        setKeywordsState(emptyKeywords());
+        setKeywordInputs({});
+        setActive(true);
+        setNotes('');
+        setImages(data.images || []);
+        setIsFormOpen(true);
+      } catch {
+        setDocxError('Failed to read this document.');
+      } finally {
+        setIsParsingDocx(false);
+      }
+    };
+    reader.onerror = () => {
+      setDocxError('Failed to read this document.');
+      setIsParsingDocx(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleCreateNew = () => {
     setEditingId(null);
     setName('');
@@ -85,6 +131,7 @@ export default function TemplatesPage() {
     setActive(true);
     setNotes('');
     setImages([]);
+    setDocxError(null);
     setIsFormOpen(true);
   };
 
@@ -264,14 +311,31 @@ export default function TemplatesPage() {
             Configure approved customer-service replies extracted from your responses document.
           </p>
         </div>
-        <button
-          onClick={handleCreateNew}
-          className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover text-xs font-semibold rounded-lg text-white transition-all shadow-lg shadow-accent/15 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          Create Template
-        </button>
+        <div className="flex items-center gap-2">
+          <label className={`flex items-center gap-1.5 px-4 py-2 bg-surface-2 border border-border hover:border-accent-border text-xs font-semibold rounded-lg text-text-secondary hover:text-text-primary transition-all cursor-pointer ${isParsingDocx ? 'opacity-60 pointer-events-none' : ''}`}>
+            {isParsingDocx ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+            {isParsingDocx ? 'Reading Document...' : 'Upload Template (.docx)'}
+            <input type="file" accept=".docx" onChange={handleDocxUpload} disabled={isParsingDocx} className="hidden" />
+          </label>
+          <button
+            onClick={handleCreateNew}
+            className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover text-xs font-semibold rounded-lg text-white transition-all shadow-lg shadow-accent/15 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            Create Template
+          </button>
+        </div>
       </div>
+
+      {docxError && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-danger-bg border border-danger/25 rounded-lg text-danger text-xs">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          {docxError}
+          <button onClick={() => setDocxError(null)} className="ml-auto text-danger hover:text-danger cursor-pointer">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Editor Form */}
       {isFormOpen && (
