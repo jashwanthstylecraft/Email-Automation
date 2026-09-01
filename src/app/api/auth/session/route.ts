@@ -37,6 +37,7 @@ export async function GET() {
         role: dbUser.role,
         organizationId: dbUser.organizationId,
         organizationName: dbUser.organization.name,
+        signature: dbUser.signature,
       },
     });
   } catch (error: any) {

@@ -13,6 +13,7 @@ model User {
   passwordHash   String
   name           String
   role           String       @default("Viewer") // Owner, Admin, Support Agent, Viewer
+  signature      String?      // per-user reply sign-off; falls back to org Settings.closing when unset
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lastLogin      DateTime?
@@ -34,6 +35,7 @@ model Organization {
   customers    Customer[]
   internalNotes InternalNote[]
   aiReplyCaches AIReplyCache[]
+  b2bSenders   B2BSender[]
   settings     Settings?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -186,6 +188,7 @@ model Template {
   body           String
   variables      String       // Comma separated list of variables like: {{customer_name}}, {{ticket_id}}
   keywords       String       @default("{}") // JSON: { primary, secondary, product, problem, intent, negative: string[] }
+  images         String       @default("[]") // JSON array of { id, dataUrl } -- referenced in body via {{image_<id>}} tokens
   active         Boolean      @default(true)
   notes          String?      // Admin internal notes
   organizationId String
@@ -252,6 +255,19 @@ model InternalNote {
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt           DateTime     @default(now())
   updatedAt           DateTime     @updatedAt
+}
+
+// Admin-managed allow-list replacing the old keyword-based B2C/B2B heuristic
+// (which produced a false positive matching "ein" inside ordinary words).
+// `value` is matched against either the full sender address or its domain.
+model B2BSender {
+  id             String       @id @default(uuid())
+  value          String       // an email address (e.g. "buyer@wholesale.com") or a bare domain (e.g. "wholesale.com")
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, value])
 }
 
 model AssignmentLog {

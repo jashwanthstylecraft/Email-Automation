@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
 import { BentoSection, BentoCard } from '@/components/MagicBento';
+import EmailBodyPreview from '@/components/EmailBodyPreview';
 
 export default function InboxPage() {
   const {
@@ -532,6 +533,16 @@ export default function InboxPage() {
 
   const currentlyMatchedTemplateName = overrideTemplateName || (matchedTemplate ? matchedTemplate.name : 'None');
 
+  const matchedTemplateImages = (() => {
+    if (!matchedTemplate?.images) return [];
+    try {
+      const parsed = JSON.parse(matchedTemplate.images);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+
   // The specific keywords that actually fired for THIS email, not just the
   // template's whole keyword set — recomputed client-side from the same
   // structured keywords used server-side, since that per-match detail
@@ -843,11 +854,17 @@ export default function InboxPage() {
                 <p className="text-[11px] text-text-muted truncate mt-1">{email.preview}</p>
                 
                 <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
-                  {email.status === 'REPLIED' && (
-                    <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-success-bg border border-success/25 text-[9px] uppercase tracking-wider font-mono font-bold text-success" title="A reply has already been sent for this email">
-                      <CheckCheck className="w-3 h-3" /> Sent
-                    </span>
-                  )}
+                  {email.status === 'REPLIED' && (() => {
+                    const sent = email.autoReplies?.find((r: any) => r.status === 'SENT');
+                    return (
+                      <span
+                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-success-bg border border-success/25 text-[9px] uppercase tracking-wider font-mono font-bold text-success"
+                        title={sent?.approvedBy ? `Sent by ${sent.approvedBy}` : 'A reply has already been sent for this email'}
+                      >
+                        <CheckCheck className="w-3 h-3" /> Sent{sent?.approvedBy ? ` · ${sent.approvedBy.split('@')[0]}` : ''}
+                      </span>
+                    );
+                  })()}
                   <span className={`px-2 py-0.5 rounded border text-[9px] uppercase tracking-wider font-mono ${getPriorityBadge(email.priority)}`}>
                     {email.priority}
                   </span>
@@ -1338,9 +1355,11 @@ export default function InboxPage() {
                         className="w-full bg-bg border-0 p-5 text-xs text-text-primary outline-none focus:ring-0 resize-none font-sans leading-relaxed"
                       />
                     ) : (
-                      <div className="p-5 text-xs text-accent-text whitespace-pre-wrap leading-relaxed font-sans">
-                        {replyText}
-                      </div>
+                      <EmailBodyPreview
+                        body={replyText}
+                        images={matchedTemplateImages}
+                        className="p-5 text-xs text-accent-text whitespace-pre-wrap leading-relaxed font-sans"
+                      />
                     )}
                     {showEditHistory && editHistory.length > 0 && (
                       <div className="border-t border-accent-border p-4 space-y-2 bg-bg">
@@ -1442,9 +1461,19 @@ export default function InboxPage() {
                         </div>
                       </div>
                     ) : (
-                      <p className="p-5 text-xs text-success whitespace-pre-wrap leading-relaxed">
-                        {sentReply.responseBody}
-                      </p>
+                      <div className="p-5 space-y-2">
+                        <EmailBodyPreview
+                          body={sentReply.responseBody}
+                          images={matchedTemplateImages}
+                          className="text-xs text-success whitespace-pre-wrap leading-relaxed"
+                        />
+                        {sentReply.approvedBy && (
+                          <p className="text-[10px] text-text-muted border-t border-success/25 pt-2">
+                            Sent by <span className="text-text-secondary font-medium">{sentReply.approvedBy}</span>
+                            {sentReply.sentAt && <> · {new Date(sentReply.sentAt).toLocaleString()}</>}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

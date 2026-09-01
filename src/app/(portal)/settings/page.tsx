@@ -4,13 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
 import {
   Settings as SettingsIcon, Save, Layers, ShieldAlert, CheckCircle,
-  Mail, Users, Plus, ShieldCheck, HelpCircle
+  Mail, Users, Plus, ShieldCheck, HelpCircle, Briefcase, Trash2, PenLine
 } from 'lucide-react';
 
 export default function SettingsPage() {
-  const { 
-    settings, fetchSettings, saveSettings, user, 
-    integrations, fetchIntegrations, saveIntegration
+  const {
+    settings, fetchSettings, saveSettings, user,
+    integrations, fetchIntegrations, saveIntegration,
+    b2bSenders, fetchB2BSenders, addB2BSender, deleteB2BSender,
+    updateSignature,
   } = useStore();
 
   const [systemPrompt, setSystemPrompt] = useState('');
@@ -21,10 +23,39 @@ export default function SettingsPage() {
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.8);
   const [isSaved, setIsSaved] = useState(false);
 
+  const [newB2BSender, setNewB2BSender] = useState('');
+  const [b2bError, setB2bError] = useState('');
+  const [signature, setSignature] = useState('');
+  const [isSignatureSaved, setIsSignatureSaved] = useState(false);
+
   useEffect(() => {
     fetchSettings();
     fetchIntegrations();
+    fetchB2BSenders();
   }, []);
+
+  useEffect(() => {
+    setSignature(user?.signature || '');
+  }, [user?.signature]);
+
+  const handleAddB2BSender = async () => {
+    if (!newB2BSender.trim()) return;
+    setB2bError('');
+    const success = await addB2BSender(newB2BSender.trim());
+    if (success) {
+      setNewB2BSender('');
+    } else {
+      setB2bError('Could not add that sender/domain -- it may already be on the list.');
+    }
+  };
+
+  const handleSaveSignature = async () => {
+    const success = await updateSignature(signature);
+    if (success) {
+      setIsSignatureSaved(true);
+      setTimeout(() => setIsSignatureSaved(false), 2000);
+    }
+  };
 
   useEffect(() => {
     if (settings) {
@@ -226,6 +257,42 @@ export default function SettingsPage() {
             </div>
           </div>
 
+          {/* Per-user reply signature -- overrides the org-wide Closing
+              Signature above for replies YOU send; falls back to it when left blank. */}
+          <div className="glass-panel p-6 rounded-xl border border-border space-y-3">
+            <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+              <PenLine className="w-4 h-4 text-accent-text" />
+              My Signature
+            </h3>
+            <p className="text-[10px] text-text-secondary">
+              Used instead of the org-wide closing signature on replies you personally send. Leave blank to use the org default.
+            </p>
+            <textarea
+              value={signature}
+              onChange={(e) => setSignature(e.target.value)}
+              rows={3}
+              placeholder={closing || 'Regards,\nSupport Team'}
+              className="w-full bg-surface-3 border border-border rounded-lg p-3 text-text-primary outline-none focus:border-accent font-mono"
+            />
+            <button
+              type="button"
+              onClick={handleSaveSignature}
+              className="w-full flex justify-center items-center gap-1.5 px-3 py-2 bg-surface-3 hover:bg-surface-2 border border-border-strong text-xs font-semibold rounded-lg text-text-primary transition-all cursor-pointer"
+            >
+              {isSignatureSaved ? (
+                <>
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  Signature Saved
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  Save My Signature
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Submit/Save Button */}
           <button
             type="submit"
@@ -245,6 +312,60 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
+
+      {/* B2B Sender List -- admin-managed allow-list that drives the B2C/B2B
+          classification (Email.businessType), replacing the old keyword heuristic. */}
+      <div className="glass-panel p-6 rounded-xl border border-border space-y-4">
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
+            <Briefcase className="w-4 h-4 text-accent-text" />
+            B2B Sender List
+          </h3>
+          <p className="text-[10px] text-text-secondary mt-1">
+            Emails from any address or domain on this list are classified B2B (visible via the B2B filter in the inbox). Everything else is B2C.
+          </p>
+        </div>
+
+        <div className="flex gap-2 max-w-lg">
+          <input
+            type="text"
+            value={newB2BSender}
+            onChange={(e) => { setNewB2BSender(e.target.value); setB2bError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddB2BSender(); } }}
+            placeholder="buyer@wholesale.com or wholesale.com"
+            className="flex-1 bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent"
+          />
+          <button
+            type="button"
+            onClick={handleAddB2BSender}
+            className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent-hover text-xs font-semibold rounded-lg text-white transition-all cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Add
+          </button>
+        </div>
+        {b2bError && <p className="text-[10px] text-danger">{b2bError}</p>}
+
+        <div className="space-y-1.5 max-w-lg">
+          {b2bSenders.length === 0 ? (
+            <p className="text-[10px] text-text-muted py-2">No B2B senders added yet -- all mail currently classifies as B2C.</p>
+          ) : (
+            b2bSenders.map((s: any) => (
+              <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-border">
+                <span className="text-text-secondary font-mono truncate">{s.value}</span>
+                <button
+                  type="button"
+                  onClick={() => deleteB2BSender(s.id)}
+                  className="text-text-muted hover:text-danger transition-colors cursor-pointer flex-shrink-0"
+                  title="Remove"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

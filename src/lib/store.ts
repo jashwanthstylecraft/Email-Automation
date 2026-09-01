@@ -7,6 +7,7 @@ export interface UserSession {
   role: string;
   organizationId: string;
   organizationName: string;
+  signature: string | null;
 }
 
 export interface Email {
@@ -70,6 +71,7 @@ export interface Template {
   body: string;
   variables: string;
   keywords?: string;
+  images?: string;
   active?: boolean;
   notes?: string | null;
 }
@@ -150,6 +152,11 @@ interface AppState {
   fetchAuditLogsFull: (filters?: { userId?: string; action?: string; entityType?: string }) => Promise<void>;
   workload: any[];
   fetchWorkload: () => Promise<void>;
+  b2bSenders: any[];
+  fetchB2BSenders: () => Promise<void>;
+  addB2BSender: (value: string) => Promise<boolean>;
+  deleteB2BSender: (id: string) => Promise<void>;
+  updateSignature: (signature: string) => Promise<boolean>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -180,6 +187,7 @@ export const useStore = create<AppState>((set, get) => ({
   customers: [],
   auditLogsFull: [],
   workload: [],
+  b2bSenders: [],
 
   fetchSession: async () => {
     try {
@@ -711,6 +719,73 @@ export const useStore = create<AppState>((set, get) => ({
       }
     } catch (err: any) {
       set({ error: err.message });
+    }
+  },
+
+  fetchB2BSenders: async () => {
+    const user = get().user;
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/b2b-senders?orgId=${user.organizationId}`);
+      const data = await res.json();
+      set({ b2bSenders: data.b2bSenders || [] });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  addB2BSender: async (value) => {
+    const user = get().user;
+    if (!user) return false;
+    try {
+      const res = await fetch('/api/b2b-senders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value, organizationId: user.organizationId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        await get().fetchB2BSenders();
+        return true;
+      }
+      set({ error: data.error });
+      return false;
+    } catch (err: any) {
+      set({ error: err.message });
+      return false;
+    }
+  },
+
+  deleteB2BSender: async (id) => {
+    try {
+      const res = await fetch(`/api/b2b-senders/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await get().fetchB2BSenders();
+      }
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  updateSignature: async (signature) => {
+    const user = get().user;
+    if (!user) return false;
+    try {
+      const res = await fetch('/api/users/me', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ signature }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        set({ user: { ...user, signature: data.user.signature } });
+        return true;
+      }
+      set({ error: data.error });
+      return false;
+    } catch (err: any) {
+      set({ error: err.message });
+      return false;
     }
   },
 

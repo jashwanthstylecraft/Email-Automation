@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, subject, body: templateBody, variables, keywords, active, notes, organizationId } = body;
+    const { name, subject, body: templateBody, variables, keywords, images, active, notes, organizationId } = body;
     const user = await getCurrentUser();
 
     if (!organizationId) {
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
         body: templateBody,
         variables: variables || 'customer_name,closing',
         keywords: keywords || '{}',
+        images: images || '[]',
         active: active !== undefined ? !!active : true,
         notes: notes || null,
         organizationId,
@@ -65,7 +66,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, subject, body: templateBody, variables, keywords, active, notes } = body;
+    const { id, name, subject, body: templateBody, variables, keywords, images, active, notes } = body;
     const user = await getCurrentUser();
 
     const existing = await prisma.template.findUnique({ where: { id } });
@@ -81,6 +82,7 @@ export async function PUT(request: Request) {
         body: templateBody,
         variables,
         keywords: keywords !== undefined ? keywords : undefined,
+        images: images !== undefined ? images : undefined,
         active: active !== undefined ? !!active : undefined,
         notes: notes !== undefined ? notes : undefined,
       },

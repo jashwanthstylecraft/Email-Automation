@@ -7,7 +7,7 @@ import { logAudit } from '@/lib/audit';
 import {
   resolveCustomerName, extractForwardedCustomerName, extractOrderNumberFromText, first100Words,
   wrapResponseWithGreetingAndClosing, getRecentEditFeedbackExamples, generateToneAdjustedReply,
-  stripEmailBoilerplate,
+  stripEmailBoilerplate, parseTemplateImages, renderImagePlaceholders,
 } from '@/lib/ai-pipeline';
 
 // Actions that only the assigned agent (or an Admin) may perform -- everyone
@@ -17,6 +17,22 @@ const OWNER_ONLY_ACTIONS = new Set([
   'APPROVE', 'EDIT_DRAFT', 'SEND_CUSTOM', 'REJECT', 'REGENERATE', 'RESEND',
   'CHANGE_STATUS', 'ASSIGN_TEMPLATE', 'ARCHIVE', 'SUBMIT_FEEDBACK', 'FILL_TEMPLATE',
 ]);
+
+// A draft's responseBody may contain {{image_<id>}} tokens inserted from its
+// matched template -- this resolves them into a real inline-image HTML body
+// (and a "[Image]" plain-text fallback) right before dispatch, using only
+// that template's own admin-uploaded images.
+async function resolveOutgoingBody(
+  responseBody: string,
+  matchedTemplateId: string | null
+): Promise<{ text: string; html?: string }> {
+  if (!matchedTemplateId) return { text: responseBody };
+  const template = await prisma.template.findUnique({ where: { id: matchedTemplateId }, select: { images: true } });
+  const images = parseTemplateImages(template?.images);
+  if (images.length === 0) return { text: responseBody };
+  const { html, text } = renderImagePlaceholders(responseBody, images);
+  return html === text ? { text } : { text, html };
+}
 
 export async function GET(
   request: Request,
@@ -232,7 +248,8 @@ export async function POST(
 
       // Dispatch real email via SMTP
       try {
-        await sendOutgoingMail(email.sender, email.subject, draft.responseBody);
+        const outgoing = await resolveOutgoingBody(draft.responseBody, email.matchedTemplateId);
+        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
       } catch (sendErr) {
         console.error('Failed to send approved SMTP email:', sendErr);
       }
@@ -314,7 +331,10 @@ export async function POST(
       ]);
 
       const greetingText = settings?.greeting || 'Hello';
-      const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
+      // Personalized: the agent actively regenerating this draft gets their
+      // own signature instead of the org default, since they're the one
+      // shaping this reply right now.
+      const closingSignature = user?.signature || settings?.closing || 'Regards,\nStyleCraft US Support Team';
       const cleanBody = stripEmailBoilerplate(email.body);
       const customerName = extractForwardedCustomerName(cleanBody) || resolveCustomerName(email.sender, email.customer?.name);
       const orderNumber = extractOrderNumberFromText(`${email.subject} ${cleanBody}`);
@@ -398,7 +418,8 @@ export async function POST(
 
       // Dispatch manual response email via SMTP
       try {
-        await sendOutgoingMail(email.sender, email.subject, responseBody);
+        const outgoing = await resolveOutgoingBody(responseBody, email.matchedTemplateId);
+        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
       } catch (sendErr) {
         console.error('Failed to send custom SMTP email:', sendErr);
       }
@@ -442,7 +463,8 @@ export async function POST(
       });
 
       try {
-        await sendOutgoingMail(email.sender, email.subject, responseBody);
+        const outgoing = await resolveOutgoingBody(responseBody, email.matchedTemplateId);
+        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
       } catch (sendErr) {
         console.error('Failed to send resent SMTP email:', sendErr);
       }
@@ -520,7 +542,9 @@ export async function POST(
 
       const settings = await prisma.settings.findUnique({ where: { organizationId: email.organizationId } });
       const greetingText = settings?.greeting || 'Hello';
-      const closingSignature = settings?.closing || 'Regards,\nStyleCraft US Support Team';
+      // Personalized: the agent who picked this template gets their own
+      // signature instead of the org default.
+      const closingSignature = user?.signature || settings?.closing || 'Regards,\nStyleCraft US Support Team';
 
       const { wrapResponseWithGreetingAndClosing, resolveCustomerName, extractOrderNumberFromText } = await import('@/lib/ai-pipeline');
       const cleanBody = stripEmailBoilerplate(email.body);

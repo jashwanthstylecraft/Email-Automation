@@ -6,6 +6,7 @@ export interface SessionUser {
   email: string;
   role: string;
   organizationId: string;
+  signature: string | null;
 }
 
 /**
@@ -26,7 +27,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     // from how recently they made ANY authenticated request, not a separate
     // online/offline flag that could get stuck if a tab closes uncleanly.
     prisma.user.update({ where: { id: user.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
-    return { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId };
+    return { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId, signature: user.signature };
   } catch {
     return null;
   }

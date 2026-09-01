@@ -21,15 +21,36 @@ export interface AIPipelineResult {
 
 const FALLBACK_RESPONSE = "Thank you for contacting StyleCraft Support. We have received your email, but we require more information or our team needs to review your request manually. A representative will follow up with you shortly.";
 
-// Wholesale/distributor/reseller language -- distinguishes a business
-// inquiry from a regular individual customer. Overlaps with
-// keyword-engine.ts's INTENT_TERMS (distributor, wholesale, dealer,
-// reseller, bulk order) plus a few more unambiguous B2B-only signals.
-export const B2B_SIGNAL_TERMS = [
-  'distributor', 'wholesale', 'dealer', 'reseller', 'bulk order',
-  'purchase order', 'moq', 'minimum order quantity', 'resale certificate',
-  'tax id', 'business license', 'net 30', 'b2b',
-];
+// B2C/B2B classification is matched against this admin-managed sender
+// allow-list (Settings page -> B2BSender table), not content keywords -- a
+// prior keyword heuristic produced a false positive ("ein" matching inside
+// "being"/"seeing"). Cached per-organization for the lifetime of this
+// module instance so a batched sync run (many emails, same org) issues one
+// query instead of one per email; naturally resets on the next cold start.
+const b2bSenderCache = new Map<string, { emails: Set<string>; domains: Set<string> }>();
+
+async function getB2BSenderSets(organizationId: string): Promise<{ emails: Set<string>; domains: Set<string> }> {
+  const cached = b2bSenderCache.get(organizationId);
+  if (cached) return cached;
+
+  const rows = await prisma.b2BSender.findMany({ where: { organizationId }, select: { value: true } });
+  const emails = new Set<string>();
+  const domains = new Set<string>();
+  for (const row of rows) {
+    const v = row.value.trim().toLowerCase();
+    (v.includes('@') ? emails : domains).add(v);
+  }
+  const result = { emails, domains };
+  b2bSenderCache.set(organizationId, result);
+  return result;
+}
+
+async function isB2BSender(sender: string, organizationId: string): Promise<boolean> {
+  const normalizedSender = sender.trim().toLowerCase();
+  const domain = normalizedSender.split('@')[1] || '';
+  const { emails, domains } = await getB2BSenderSets(organizationId);
+  return emails.has(normalizedSender) || domains.has(domain);
+}
 
 // Kept short and reply-focused on purpose -- classification (language,
 // category, sentiment, urgency, priority) is handled by free local
@@ -264,6 +285,47 @@ export function wrapResponseWithGreetingAndClosing(
   }
 
   return res;
+}
+
+export interface TemplateImage {
+  id: string;
+  dataUrl: string; // e.g. "data:image/png;base64,...."
+}
+
+/**
+ * Parses Template.images (a JSON string column) into a typed array,
+ * tolerating missing/malformed data the same way parseKeywords in
+ * keyword-engine.ts does for Template.keywords.
+ */
+export function parseTemplateImages(raw: string | null | undefined): TemplateImage[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Replaces {{image_<id>}} tokens with a real inline <img> for the outgoing
+ * HTML email, and with a plain "[Image]" marker for the text fallback. This
+ * is the ONLY place template-authored content becomes real HTML -- it only
+ * ever touches admin-uploaded image data (never customer-influenced text
+ * like {{customer_name}}, which is a separate, already-interpolated part of
+ * the same string by the time this runs), so it can't be used to inject
+ * arbitrary markup from a customer's email content.
+ */
+export function renderImagePlaceholders(text: string, images: TemplateImage[]): { html: string; text: string } {
+  if (images.length === 0) return { html: text, text };
+  let html = text;
+  let plain = text;
+  for (const img of images) {
+    const token = new RegExp(`\\{\\{image_${img.id}\\}\\}`, 'g');
+    html = html.replace(token, `<img src="${img.dataUrl}" alt="" style="max-width:100%;height:auto;display:block;margin:12px 0;" />`);
+    plain = plain.replace(token, '[Image]');
+  }
+  return { html, text: plain };
 }
 
 /**
@@ -587,11 +649,12 @@ async function classifyEmail(
     category = 'Technical Issue';
   }
 
-  // 3b. Business Type Detection (B2C vs B2B) -- wholesale/distributor/
-  // reseller language vs. regular individual-customer language. Seeded from
-  // the B2B-flavored terms already present in keyword-engine.ts's
-  // INTENT_TERMS list, extended with a few more unambiguous B2B signals.
-  const businessType = B2B_SIGNAL_TERMS.some((term) => normalizedText.includes(term)) ? 'B2B' : 'B2C';
+  // 3b. Business Type Detection (B2C vs B2B) -- matched against the
+  // admin-managed B2BSender allow-list (Settings page) rather than content
+  // keywords. The earlier keyword heuristic produced a false positive
+  // ("ein" matching inside "being"/"seeing"); an explicit sender list is
+  // more reliable and lets an admin correct/extend it without a code change.
+  const businessType = await isB2BSender(sender, organizationId) ? 'B2B' : 'B2C';
 
   // 4. Sentiment Analysis
   let sentiment = 'NEUTRAL';

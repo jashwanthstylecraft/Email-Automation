@@ -1,14 +1,21 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Plus, Edit, Trash, ToggleLeft, ToggleRight, Check, AlertTriangle,
-  Terminal, ShieldCheck, HelpCircle, Save, Info, RefreshCw, MessageSquare, X, PartyPopper
+  Terminal, ShieldCheck, HelpCircle, Save, Info, RefreshCw, MessageSquare, X, PartyPopper,
+  Image as ImageIcon, Upload
 } from 'lucide-react';
 import { StructuredKeywords, parseKeywords, serializeKeywords, emptyKeywords, matchTemplates, TemplateForScoring, totalKeywordCount } from '@/lib/keyword-engine';
+import EmailBodyPreview from '@/components/EmailBodyPreview';
+
+interface TemplateImage {
+  id: string;
+  dataUrl: string;
+}
 
 const KEYWORD_CATEGORIES: { key: keyof StructuredKeywords; label: string; hint: string }[] = [
   { key: 'primary', label: 'Primary Keywords', hint: 'Strongest signal — the core phrase(s) for this template' },
@@ -39,11 +46,13 @@ export default function TemplatesPage() {
   const [active, setActive] = useState(true);
   const [notes, setNotes] = useState('');
   const [saveToast, setSaveToast] = useState<string | null>(null);
+  const [images, setImages] = useState<TemplateImage[]>([]);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Simulator states
   const [testSelectedId, setTestSelectedId] = useState('');
   const [testText, setTestText] = useState('');
-  const [testResult, setTestResult] = useState<{ matches: boolean; preview: string; keywords: string[]; confidence: number; suggestions: { name: string; confidence: number }[] } | null>(null);
+  const [testResult, setTestResult] = useState<{ matches: boolean; preview: string; previewImages: TemplateImage[]; keywords: string[]; confidence: number; suggestions: { name: string; confidence: number }[] } | null>(null);
 
   // Learning logs state
   const [learningLogs, setLearningLogs] = useState<any[]>([]);
@@ -75,6 +84,7 @@ export default function TemplatesPage() {
     setKeywordInputs({});
     setActive(true);
     setNotes('');
+    setImages([]);
     setIsFormOpen(true);
   };
 
@@ -87,6 +97,7 @@ export default function TemplatesPage() {
       body,
       variables,
       keywords: serializeKeywords(keywordsState),
+      images: JSON.stringify(images),
       active,
       notes,
     });
@@ -99,6 +110,7 @@ export default function TemplatesPage() {
     setKeywordsState(emptyKeywords());
     setNotes('');
     setActive(true);
+    setImages([]);
     setIsFormOpen(false);
   };
 
@@ -112,7 +124,52 @@ export default function TemplatesPage() {
     setKeywordInputs({});
     setActive(tmpl.active !== false);
     setNotes(tmpl.notes || '');
+    try {
+      const parsed = JSON.parse(tmpl.images || '[]');
+      setImages(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setImages([]);
+    }
     setIsFormOpen(true);
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const id = Math.random().toString(36).slice(2, 10);
+      setImages((prev) => [...prev, { id, dataUrl }]);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = ''; // allow re-selecting the same file later
+  };
+
+  const handleInsertImageToken = (img: TemplateImage) => {
+    const token = `{{image_${img.id}}}`;
+    const textarea = bodyTextareaRef.current;
+    if (!textarea) {
+      setBody((prev) => prev + token);
+      return;
+    }
+    const start = textarea.selectionStart ?? body.length;
+    const end = textarea.selectionEnd ?? body.length;
+    const next = body.slice(0, start) + token + body.slice(end);
+    setBody(next);
+    // Restore focus and cursor position after the inserted token.
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursor = start + token.length;
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  };
+
+  const handleRemoveImage = (id: string) => {
+    setImages((prev) => prev.filter((img) => img.id !== id));
+    // Also strip any now-orphaned token from the body so it doesn't send as
+    // literal "{{image_xxx}}" text once the image is gone.
+    setBody((prev) => prev.replace(new RegExp(`\\{\\{image_${id}\\}\\}`, 'g'), ''));
   };
 
   const addKeywordToCategory = (category: keyof StructuredKeywords) => {
@@ -174,9 +231,18 @@ export default function TemplatesPage() {
       preview = preview + `\n\nBest regards,\nStyleCraft US Support Team`;
     }
 
+    let previewImages: TemplateImage[] = [];
+    try {
+      const parsed = JSON.parse(template.images || '[]');
+      previewImages = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      previewImages = [];
+    }
+
     setTestResult({
       matches,
       preview,
+      previewImages,
       keywords: matches ? result.matchedTerms : [],
       confidence: matches ? result.confidenceScore : 0,
       suggestions: result.suggestions.map(s => ({ name: s.name, confidence: s.confidence })),
@@ -269,6 +335,7 @@ export default function TemplatesPage() {
             <div>
               <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Template Body</label>
               <textarea
+                ref={bodyTextareaRef}
                 required
                 rows={8}
                 placeholder="Hi {{customer_name}},\n\nYou can easily reset your password by going to: https://stylecraftus.com/reset-password.\n\n{{closing}}"
@@ -276,6 +343,50 @@ export default function TemplatesPage() {
                 onChange={(e) => setBody(e.target.value)}
                 className="w-full bg-surface-3 border border-border rounded-lg p-3 text-text-primary outline-none focus:border-accent font-sans leading-relaxed text-xs"
               />
+            </div>
+
+            <div className="border border-border rounded-lg p-3 bg-surface-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-1.5 font-semibold text-text-secondary uppercase tracking-wider">
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  Images
+                </label>
+                <label className="flex items-center gap-1.5 px-3 py-1.5 bg-surface-2 border border-border rounded-lg text-text-secondary hover:text-text-primary hover:border-accent cursor-pointer transition-colors">
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload Image
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                </label>
+              </div>
+              {images.length === 0 ? (
+                <p className="text-[9px] text-text-muted">
+                  Upload an image, then click "Insert" to place it in the body at your cursor as a {'{{image_...}}'} token.
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {images.map((img) => (
+                    <div key={img.id} className="bg-surface-2 border border-border rounded-lg p-2 space-y-1.5">
+                      <img src={img.dataUrl} alt="" className="w-full h-16 object-cover rounded" />
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleInsertImageToken(img)}
+                          className="flex-1 text-[9px] font-semibold px-1.5 py-1 rounded bg-accent-bg border border-accent-border text-accent-text hover:bg-accent hover:text-white transition-colors cursor-pointer"
+                        >
+                          Insert
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(img.id)}
+                          className="text-[9px] font-semibold px-1.5 py-1 rounded bg-danger-bg border border-danger/25 text-danger hover:bg-danger hover:text-white transition-colors cursor-pointer"
+                          title="Remove image"
+                        >
+                          <Trash className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -589,9 +700,11 @@ export default function TemplatesPage() {
                 )}
                 <div>
                   <span className="text-[9px] text-text-muted block uppercase font-mono">Simulated Draft Output:</span>
-                  <div className="bg-surface-3 border border-border p-3 rounded-lg mt-1 text-[11px] text-accent-text whitespace-pre-wrap leading-relaxed font-sans">
-                    {testResult.preview}
-                  </div>
+                  <EmailBodyPreview
+                    body={testResult.preview}
+                    images={testResult.previewImages}
+                    className="bg-surface-3 border border-border p-3 rounded-lg mt-1 text-[11px] text-accent-text whitespace-pre-wrap leading-relaxed font-sans"
+                  />
                 </div>
               </div>
             )}
