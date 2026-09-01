@@ -28,6 +28,7 @@ export default function InboxPage() {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState(searchParams.get('status') || 'INBOX');
   const [activeCategory, setActiveCategory] = useState('ALL');
+  const [activeBusinessType, setActiveBusinessType] = useState('ALL');
   const [replyText, setReplyText] = useState('');
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [customReply, setCustomReply] = useState('');
@@ -135,9 +136,9 @@ export default function InboxPage() {
   }, [selectedEmail?.id]);
 
   useEffect(() => {
-    fetchEmails({ status: activeFilter, search, category: activeCategory });
+    fetchEmails({ status: activeFilter, search, category: activeCategory, businessType: activeBusinessType });
     fetchTemplates();
-  }, [activeFilter, search, activeCategory]);
+  }, [activeFilter, search, activeCategory, activeBusinessType]);
 
   // Keep the inbox genuinely live: actively poll the real mailbox (not just
   // re-read our own DB) every 30s, so new mail shows up without waiting on
@@ -465,8 +466,7 @@ export default function InboxPage() {
   // "Inbox" (the default) shows only active/upcoming mail that still needs
   // action; handled and archived mail lives in the Sent / Deleted tabs.
   const filterTabs = [
-    { label: 'Inbox (B2C)', value: 'INBOX', icon: InboxIcon },
-    { label: 'B2B', value: 'B2B', icon: Briefcase },
+    { label: 'Inbox', value: 'INBOX', icon: InboxIcon },
     { label: 'All', value: 'ALL', icon: Mail },
     { label: 'Primary', value: 'PRIMARY', icon: CircleDot },
     { label: 'Drafts', value: 'DRAFTS', icon: FileEdit },
@@ -744,6 +744,28 @@ export default function InboxPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Sync Inbox Now
           </button>
+        </div>
+
+        {/* B2C / B2B filter -- one inbox, filtered by customer type rather than separate tabs */}
+        <div className="px-4 py-2 border-b border-border bg-surface-1 flex items-center gap-2">
+          <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold flex items-center gap-1">
+            <Briefcase className="w-3 h-3" /> Customer Type
+          </span>
+          <div className="flex gap-1">
+            {['ALL', 'B2C', 'B2B'].map((bt) => (
+              <button
+                key={bt}
+                onClick={() => setActiveBusinessType(bt)}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-semibold cursor-pointer transition-colors ${
+                  activeBusinessType === bt
+                    ? 'bg-accent text-white'
+                    : 'bg-surface-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-3'
+                }`}
+              >
+                {bt === 'ALL' ? 'All' : bt}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Search */}

@@ -12,6 +12,7 @@ export async function GET(request: Request) {
     const priority = searchParams.get('priority');
     const sentiment = searchParams.get('sentiment');
     const category = searchParams.get('category');
+    const businessType = searchParams.get('businessType');
     const search = searchParams.get('search');
 
     if (!orgId) {
@@ -29,13 +30,8 @@ export async function GET(request: Request) {
     // that need a different filter entirely.
     if (status === 'INBOX' || !status) {
       // The inbox proper: only mail that still needs action. Replied
-      // (handled) and escalated/archived mail lives in its own tabs. This
-      // is the B2C "main inbox" -- business inquiries live in the B2B tab.
+      // (handled) and escalated/archived mail lives in its own tabs.
       where.status = { in: ['UNREAD', 'WAITING'] };
-      where.businessType = 'B2C';
-    } else if (status === 'B2B') {
-      where.status = { in: ['UNREAD', 'WAITING'] };
-      where.businessType = 'B2B';
     } else if (status === 'PRIMARY') {
       where.gmailCategory = 'primary';
       where.status = { not: 'ESCALATED' };
@@ -55,6 +51,9 @@ export async function GET(request: Request) {
     }
     if (category && category !== 'ALL') {
       where.category = category;
+    }
+    if (businessType && businessType !== 'ALL') {
+      where.businessType = businessType;
     }
 
     if (search) {

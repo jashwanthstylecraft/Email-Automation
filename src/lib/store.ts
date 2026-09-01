@@ -251,6 +251,7 @@ export const useStore = create<AppState>((set, get) => ({
         priority: effective.priority || 'ALL',
         sentiment: effective.sentiment || 'ALL',
         category: effective.category || 'ALL',
+        businessType: effective.businessType || 'ALL',
         search: effective.search || '',
       });
       const res = await fetch(`/api/inbox?${params}`);
