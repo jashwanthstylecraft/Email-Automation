@@ -38,6 +38,21 @@
   --text-secondary: #4b5563;
   --text-muted: #71717a;
   --accent-text: #4f46e5;
+  /* The dark theme's badge/status colors (accent/success/warning/danger)
+     are low-alpha tints designed to glow against a near-black background --
+     unchanged, they read as barely-there pastel washes on a light
+     background (e.g. warning-bg at 10% opacity amber is nearly invisible
+     on white, and the amber-500 text on top of it fails contrast). Light
+     mode gets its own solid pastel backgrounds and darker (700-ish)
+     foreground shades so every badge/pill stays readable. */
+  --accent-bg: #eef2ff;
+  --accent-border: #c7d2fe;
+  --success: #15803d;
+  --success-bg: #f0fdf4;
+  --warning: #b45309;
+  --warning-bg: #fffbeb;
+  --danger: #b91c1c;
+  --danger-bg: #fef2f2;
 }
 
 @theme inline {
