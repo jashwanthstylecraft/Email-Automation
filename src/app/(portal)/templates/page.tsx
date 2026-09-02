@@ -68,6 +68,7 @@ export default function TemplatesPage() {
   const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [isParsingDocx, setIsParsingDocx] = useState(false);
   const [docxError, setDocxError] = useState<string | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
 
   // Simulator states
   const [testSelectedId, setTestSelectedId] = useState('');
@@ -81,6 +82,15 @@ export default function TemplatesPage() {
     fetchTemplates();
     fetchLearningLogs();
   }, []);
+
+  // Editing a template scrolled far down a long list previously left the
+  // editor open at the top of the page, out of view -- jump to it so
+  // clicking Edit doesn't require manually scrolling back up every time.
+  useEffect(() => {
+    if (isFormOpen) {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [isFormOpen, editingId]);
 
   const fetchLearningLogs = async () => {
     try {
@@ -369,7 +379,7 @@ export default function TemplatesPage() {
 
       {/* Editor Form */}
       {isFormOpen && (
-        <div className="glass-panel p-6 rounded-xl border border-accent-border bg-accent-bg space-y-6">
+        <div ref={formRef} className="glass-panel p-6 rounded-xl border border-accent-border bg-accent-bg space-y-6">
           <div className="flex justify-between items-center pb-3 border-b border-border">
             <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
               <Terminal className="w-4 h-4 text-accent-text" />

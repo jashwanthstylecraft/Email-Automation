@@ -11,6 +11,7 @@
     "test": "npx tsx scripts/run-tests.ts"
   },
   "dependencies": {
+    "@number-flow/react": "^0.6.2",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@tanstack/react-query": "^5.101.2",

@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import NumberFlow from '@number-flow/react';
 import { useStore } from '@/lib/store';
 import {
   Mail, Send, Clock, AlertTriangle, Sliders, Sparkles, ArrowRight, Activity, Edit3, MessageSquare, ShieldCheck,
@@ -254,27 +255,27 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-3 gap-2 font-mono text-[10px] pt-1">
                   <div>
                     <p className="text-text-muted uppercase text-[9px]">Open</p>
-                    <p className="text-text-primary font-bold">{w.openCount}</p>
+                    <p className="text-text-primary font-bold"><NumberFlow value={w.openCount} /></p>
                   </div>
                   <div>
                     <p className="text-text-muted uppercase text-[9px]">Replied</p>
-                    <p className="text-text-primary font-bold">{w.respondedCount}</p>
+                    <p className="text-text-primary font-bold"><NumberFlow value={w.respondedCount} /></p>
                   </div>
                   <div>
                     <p className={`uppercase text-[9px] ${w.overdueCount > 0 ? 'text-danger' : 'text-text-muted'}`}>Overdue</p>
-                    <p className={`font-bold ${w.overdueCount > 0 ? 'text-danger' : 'text-text-primary'}`}>{w.overdueCount}</p>
+                    <p className={`font-bold ${w.overdueCount > 0 ? 'text-danger' : 'text-text-primary'}`}><NumberFlow value={w.overdueCount} /></p>
                   </div>
                   <div>
                     <p className="text-text-muted uppercase text-[9px]">Assigned</p>
-                    <p className="text-text-primary font-bold">{w.assignedTotal}</p>
+                    <p className="text-text-primary font-bold"><NumberFlow value={w.assignedTotal} /></p>
                   </div>
                   <div>
                     <p className="text-text-muted uppercase text-[9px]">Drafts</p>
-                    <p className="text-text-primary font-bold">{w.draftsGenerated}</p>
+                    <p className="text-text-primary font-bold"><NumberFlow value={w.draftsGenerated} /></p>
                   </div>
                   <div>
                     <p className="text-text-muted uppercase text-[9px]">Left</p>
-                    <p className="text-text-primary font-bold">{w.leftToRespond}</p>
+                    <p className="text-text-primary font-bold"><NumberFlow value={w.leftToRespond} /></p>
                   </div>
                 </div>
                 <p className="text-[9px] text-text-muted pt-1 border-t border-border">
@@ -304,7 +305,9 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="mt-3">
-                <h3 className="text-xl font-bold tracking-tight text-text-primary">{kpi.value}</h3>
+                <h3 className="text-xl font-bold tracking-tight text-text-primary">
+                  <NumberFlow value={kpi.value} />
+                </h3>
               </div>
             </BentoCard>
           );
@@ -315,6 +318,7 @@ export default function DashboardPage() {
       <BentoSection className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {subMetrics.map((sm) => {
           const Icon = sm.icon;
+          const percentMatch = typeof sm.value === 'string' ? sm.value.match(/^(\d+)%$/) : null;
           return (
             <BentoCard key={sm.name} as={Link} href={sm.href} className="glass-panel p-4 rounded-xl border border-border hover:border-accent-border transition-colors flex items-center justify-between bg-bg">
               <div className="flex items-center gap-3">
@@ -323,7 +327,15 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <p className="text-[10px] text-text-secondary">{sm.name}</p>
-                  <p className="text-xs font-semibold text-text-primary mt-0.5">{sm.value}</p>
+                  <p className="text-xs font-semibold text-text-primary mt-0.5">
+                    {typeof sm.value === 'number' ? (
+                      <NumberFlow value={sm.value} />
+                    ) : percentMatch ? (
+                      <NumberFlow value={parseInt(percentMatch[1], 10)} suffix="%" />
+                    ) : (
+                      sm.value
+                    )}
+                  </p>
                 </div>
               </div>
             </BentoCard>
