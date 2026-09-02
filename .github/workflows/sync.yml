@@ -1,0 +1,18 @@
+name: Scheduled Inbox Sync
+
+# Vercel's own Cron Jobs are capped at once/day on this project's plan
+# (see vercel.json), which is too slow for real customer support. GitHub
+# Actions has no such limit, so this pings the same sync endpoint the
+# Vercel cron and the in-app "Sync Inbox" button both use, on a 5-minute
+# schedule -- GitHub's own minimum cron granularity.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger inbox sync
+        run: curl -sf --max-time 60 https://stylecraft-email-automation.vercel.app/api/cron/sync

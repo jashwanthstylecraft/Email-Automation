@@ -65,7 +65,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
       const pending: { seq: number; newEmail: Awaited<ReturnType<typeof prisma.email.create>>; senderEmail: string; senderName: string | null; subject: string }[] = [];
 
       for (const seq of unseenList) {
-        const message = await client.fetchOne(seq, { source: true, uid: true });
+        const message = await client.fetchOne(seq, { source: true, uid: true, internalDate: true });
         if (!message || !message.source) continue;
 
         const parsed = await simpleParser(message.source);
@@ -123,7 +123,15 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         }
 
         // 2. Integration Connection Time Constraint (Only emails received from now onward after connected)
-        const emailDate = parsed.date ? new Date(parsed.date) : new Date();
+        // Prefer the IMAP server's own INTERNALDATE (when the message actually
+        // landed in this mailbox) over the message's own Date: header --
+        // that header is written by the sender's mail client, so a few
+        // minutes of clock skew on their end shows up as a mismatch against
+        // what the real mailbox (e.g. Gmail's own web UI) displays, which
+        // uses the server-received time.
+        const emailDate = message.internalDate
+          ? new Date(message.internalDate)
+          : (parsed.date ? new Date(parsed.date) : new Date());
         if (emailDate < inbox.createdAt) {
           console.log(`Skipping old email from ${senderEmail} received before connection: ${parsed.date}`);
           await client.messageFlagsAdd({ seq }, ['\\Seen']);
