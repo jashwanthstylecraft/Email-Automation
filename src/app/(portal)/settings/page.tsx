@@ -25,6 +25,7 @@ export default function SettingsPage() {
 
   const [newB2BSender, setNewB2BSender] = useState('');
   const [b2bError, setB2bError] = useState('');
+  const [b2bFilter, setB2bFilter] = useState('');
   const [signature, setSignature] = useState('');
   const [isSignatureSaved, setIsSignatureSaved] = useState(false);
 
@@ -346,23 +347,38 @@ export default function SettingsPage() {
         </div>
         {b2bError && <p className="text-[10px] text-danger">{b2bError}</p>}
 
-        <div className="space-y-1.5 max-w-lg">
+        {b2bSenders.length > 0 && (
+          <div className="flex items-center justify-between max-w-lg">
+            <input
+              type="text"
+              value={b2bFilter}
+              onChange={(e) => setB2bFilter(e.target.value)}
+              placeholder="Filter senders..."
+              className="w-48 bg-surface-3 border border-border rounded-lg px-3 py-1.5 text-text-primary outline-none focus:border-accent text-[11px]"
+            />
+            <span className="text-[10px] text-text-muted">{b2bSenders.length} total</span>
+          </div>
+        )}
+
+        <div className="space-y-1.5 max-w-lg max-h-96 overflow-y-auto pr-1">
           {b2bSenders.length === 0 ? (
             <p className="text-[10px] text-text-muted py-2">No B2B senders added yet -- all mail currently classifies as B2C.</p>
           ) : (
-            b2bSenders.map((s: any) => (
-              <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-border">
-                <span className="text-text-secondary font-mono truncate">{s.value}</span>
-                <button
-                  type="button"
-                  onClick={() => deleteB2BSender(s.id)}
-                  className="text-text-muted hover:text-danger transition-colors cursor-pointer flex-shrink-0"
-                  title="Remove"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))
+            b2bSenders
+              .filter((s: any) => s.value.toLowerCase().includes(b2bFilter.trim().toLowerCase()))
+              .map((s: any) => (
+                <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-surface-2 border border-border">
+                  <span className="text-text-secondary font-mono truncate">{s.value}</span>
+                  <button
+                    type="button"
+                    onClick={() => deleteB2BSender(s.id)}
+                    className="text-text-muted hover:text-danger transition-colors cursor-pointer flex-shrink-0"
+                    title="Remove"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
           )}
         </div>
       </div>
