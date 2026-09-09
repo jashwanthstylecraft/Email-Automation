@@ -61,12 +61,17 @@ async function main() {
   console.log('Created Settings for StyleCraft US');
 
   // 5. Create Inbox
+  // The real connected mailbox is whatever IMAP_USER actually points at --
+  // hardcoding a "support@stylecraftus.com" placeholder here previously left
+  // the Settings page (and every synced email's "recipient" field) showing a
+  // mailbox address that didn't match what was actually connected.
+  const imapUser = process.env.IMAP_USER || 'support@stylecraftus.com';
   const inbox = await prisma.inbox.create({
     data: {
       name: 'StyleCraft Support Inbox',
-      emailAddress: 'support@stylecraftus.com',
+      emailAddress: imapUser,
       provider: 'IMAP',
-      credentials: JSON.stringify({ host: 'imap.gmail.com', port: 993, user: 'support@stylecraftus.com' }),
+      credentials: JSON.stringify({ host: process.env.IMAP_HOST || 'imap.gmail.com', port: parseInt(process.env.IMAP_PORT || '993', 10), user: imapUser }),
       status: 'CONNECTED',
       organizationId: org.id,
     },

@@ -12,7 +12,7 @@ export default function SettingsPage() {
     settings, fetchSettings, saveSettings, user,
     integrations, fetchIntegrations, saveIntegration,
     b2bSenders, fetchB2BSenders, addB2BSender, deleteB2BSender,
-    updateSignature,
+    updateSignature, connectedInbox,
   } = useStore();
 
   const [systemPrompt, setSystemPrompt] = useState('');
@@ -249,13 +249,30 @@ export default function SettingsPage() {
               Connected Mailbox
             </h3>
 
-            <div className="p-3 bg-success-bg border border-success/25 text-success rounded-lg flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 flex-shrink-0" />
-              <div>
-                <p className="font-semibold text-xs">support@stylecraftus.com</p>
-                <p className="text-[9px] uppercase font-mono mt-0.5">IMAP/SMTP Connection Active</p>
+            {connectedInbox ? (
+              <div className={`p-3 rounded-lg flex items-center gap-2 ${
+                connectedInbox.status === 'CONNECTED'
+                  ? 'bg-success-bg border border-success/25 text-success'
+                  : 'bg-danger-bg border border-danger/25 text-danger'
+              }`}>
+                {connectedInbox.status === 'CONNECTED' ? (
+                  <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                ) : (
+                  <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+                )}
+                <div>
+                  <p className="font-semibold text-xs">{connectedInbox.emailAddress}</p>
+                  <p className="text-[9px] uppercase font-mono mt-0.5">
+                    {connectedInbox.provider} · {connectedInbox.status === 'CONNECTED' ? 'IMAP/SMTP Connection Active' : connectedInbox.status}
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="p-3 bg-surface-3 border border-border text-text-muted rounded-lg flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+                <p className="text-xs">No mailbox connected for this organization yet.</p>
+              </div>
+            )}
           </div>
 
           {/* Per-user reply signature -- overrides the org-wide Closing

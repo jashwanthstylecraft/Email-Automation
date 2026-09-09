@@ -29,7 +29,12 @@ export async function GET(request: Request) {
       });
     }
 
-    return NextResponse.json({ settings });
+    const inbox = await prisma.inbox.findFirst({
+      where: { organizationId: orgId },
+      select: { emailAddress: true, provider: true, status: true },
+    });
+
+    return NextResponse.json({ settings, inbox });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

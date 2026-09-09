@@ -46,6 +46,12 @@ export interface Settings {
   confidenceThreshold: number;
 }
 
+export interface ConnectedInbox {
+  emailAddress: string;
+  provider: string;
+  status: string;
+}
+
 export interface Rule {
   id: string;
   name: string;
@@ -89,6 +95,7 @@ interface AppState {
   emails: Email[];
   selectedEmail: Email | null;
   settings: Settings | null;
+  connectedInbox: ConnectedInbox | null;
   rules: Rule[];
   documents: Document[];
   templates: Template[];
@@ -165,6 +172,7 @@ export const useStore = create<AppState>((set, get) => ({
   emails: [],
   selectedEmail: null,
   settings: null,
+  connectedInbox: null,
   rules: [],
   documents: [],
   templates: [],
@@ -537,7 +545,7 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const res = await fetch(`/api/settings?orgId=${user.organizationId}`);
       const data = await res.json();
-      set({ settings: data.settings });
+      set({ settings: data.settings, connectedInbox: data.inbox || null });
     } catch (err: any) {
       set({ error: err.message });
     }
