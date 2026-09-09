@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
 import EmailBodyPreview from '@/components/EmailBodyPreview';
@@ -27,6 +27,7 @@ export default function InboxPage() {
   const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState(searchParams.get('status') || 'INBOX');
+  const [isMailboxCollapsed, setIsMailboxCollapsed] = useState(false);
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [activeBusinessType, setActiveBusinessType] = useState('ALL');
   const [replyText, setReplyText] = useState('');
@@ -464,7 +465,6 @@ export default function InboxPage() {
   const filterTabs = [
     { label: 'Inbox', value: 'INBOX', icon: InboxIcon },
     { label: 'All', value: 'ALL', icon: Mail },
-    { label: 'Primary', value: 'PRIMARY', icon: CircleDot },
     { label: 'Drafts', value: 'DRAFTS', icon: FileEdit },
     { label: 'Sent', value: 'REPLIED', icon: CheckCheck },
     { label: 'Manual Review', value: 'WAITING', icon: ShieldQuestion },
@@ -583,21 +583,31 @@ export default function InboxPage() {
   const totalCategorized = categoryList.reduce((sum: number, c: any) => sum + c.value, 0);
 
   return (
-    <div className="flex h-[calc(100vh-10rem)] w-full gap-3 text-xs">
+    <div className="flex h-[calc(100vh-10rem)] w-full gap-2 text-xs">
       {/* Left half of the page: Mailbox + Inbox Queue -- Classify used to be a
           third dedicated vertical-tab column here; it's now a Category
           dropdown filter inside the Inbox Queue itself, freeing that width
           for the actual email list. */}
-      <div className="w-1/2 flex-shrink-0 flex gap-3 min-w-0">
-      {/* Mailbox folders (regular mail-client sections) */}
-      <div className="w-24 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-border bg-bg">
-        <div className="p-4 border-b border-border bg-surface-2">
-          <h3 className="font-bold text-text-primary text-xs uppercase tracking-wider flex items-center gap-1.5">
-            <InboxIcon className="w-3.5 h-3.5 text-accent-text" />
-            Mailbox
-          </h3>
+      <div className="w-1/2 flex-shrink-0 flex gap-2 min-w-0">
+      {/* Mailbox folders -- collapsible to a narrow icon-only strip so it
+          doesn't eat width from the actual email list when not needed. */}
+      <div className={`${isMailboxCollapsed ? 'w-10' : 'w-24'} flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-border bg-bg transition-all`}>
+        <div className="p-2 border-b border-border bg-surface-2 flex items-center justify-between gap-1">
+          {!isMailboxCollapsed && (
+            <h3 className="font-bold text-text-primary text-xs uppercase tracking-wider flex items-center gap-1.5 truncate">
+              <InboxIcon className="w-3.5 h-3.5 text-accent-text flex-shrink-0" />
+              Mailbox
+            </h3>
+          )}
+          <button
+            onClick={() => setIsMailboxCollapsed(!isMailboxCollapsed)}
+            title={isMailboxCollapsed ? 'Expand mailbox' : 'Collapse mailbox'}
+            className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-surface-3 cursor-pointer flex-shrink-0 mx-auto"
+          >
+            {isMailboxCollapsed ? <ChevronRight className="w-3.5 h-3.5" /> : <ChevronLeft className="w-3.5 h-3.5" />}
+          </button>
         </div>
-        <div className="p-2 space-y-1 overflow-y-auto">
+        <div className="p-1.5 space-y-1 overflow-y-auto">
           {filterTabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -606,13 +616,15 @@ export default function InboxPage() {
                 onClick={() => setActiveFilter(tab.value)}
                 title={tab.label}
                 className={`w-full flex items-center gap-1 px-1.5 py-1.5 rounded-lg text-left transition-colors cursor-pointer ${
+                  isMailboxCollapsed ? 'justify-center' : ''
+                } ${
                   activeFilter === tab.value
                     ? 'bg-accent/20 text-accent-text border border-accent-border'
                     : 'text-text-secondary hover:text-text-primary hover:bg-surface-3 border border-transparent'
                 }`}
               >
                 <Icon className="w-3 h-3 flex-shrink-0" />
-                <span className="truncate text-[10px]">{tab.label}</span>
+                {!isMailboxCollapsed && <span className="truncate text-[10px]">{tab.label}</span>}
               </button>
             );
           })}
