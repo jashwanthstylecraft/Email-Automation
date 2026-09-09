@@ -734,7 +734,9 @@ export default function InboxPage() {
               No real data available yet.
             </div>
           ) : (
-            sortedEmails.map((email) => (
+            sortedEmails.map((email) => {
+              const isUnread = email.status === 'UNREAD';
+              return (
               <div
                 key={email.id}
                 onClick={() => selectEmail(email)}
@@ -746,7 +748,7 @@ export default function InboxPage() {
               >
                 <div className="flex justify-between items-start gap-2">
                   <div className="truncate max-w-[50%]">
-                    <span className="font-bold text-text-primary block truncate" title={email.sender}>
+                    <span className={`${isUnread ? 'font-bold text-text-primary' : 'font-medium text-text-secondary'} block truncate`} title={email.sender}>
                       {email.sender.split('@')[0].split('.')[0].replace(/^\w/, c => c.toUpperCase())}
                     </span>
                     <span className="text-[9px] text-text-muted block truncate">{email.sender}</span>
@@ -781,8 +783,8 @@ export default function InboxPage() {
                     </span>
                   </div>
                 </div>
-                <h4 className="font-semibold text-text-secondary truncate mt-1">{email.subject}</h4>
-                <p className="text-[11px] text-text-muted truncate mt-1">{email.preview}</p>
+                <h4 className={`${isUnread ? 'font-bold text-text-primary' : 'font-normal text-text-secondary'} truncate mt-1`}>{email.subject}</h4>
+                <p className={`text-[11px] truncate mt-1 ${isUnread ? 'text-text-secondary' : 'text-text-muted'}`}>{email.preview}</p>
                 
                 <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
                   {email.status === 'REPLIED' && (() => {
@@ -819,7 +821,8 @@ export default function InboxPage() {
                   )}
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
