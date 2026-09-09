@@ -35,6 +35,32 @@ const AUTOMATED_SENDER_LOCAL_PARTS = [
   'notification', 'notifications', 'bounce', 'bounces', 'mailer', 'outgoing', 'events',
 ];
 
+// Attachments (images/PDFs/docs) are stored inline as base64 data URIs --
+// there's no cloud object storage in this deployment, and the DB is the
+// only persistence available. Capped per-file and per-email so one email
+// with a handful of large files can't bloat a single row without bound;
+// an oversized file is still listed (filename/size) but its content isn't
+// stored.
+const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024; // 8MB
+const MAX_ATTACHMENTS_PER_EMAIL = 10;
+
+interface StoredAttachment {
+  filename: string;
+  contentType: string;
+  size: number;
+  dataUrl: string | null; // null when skipped for being over MAX_ATTACHMENT_BYTES
+}
+
+function extractAttachments(parsed: { attachments?: { filename?: string; contentType: string; size: number; content: Buffer }[] }): StoredAttachment[] {
+  const raw = parsed.attachments || [];
+  return raw.slice(0, MAX_ATTACHMENTS_PER_EMAIL).map((a) => ({
+    filename: a.filename || 'attachment',
+    contentType: a.contentType || 'application/octet-stream',
+    size: a.size,
+    dataUrl: a.size <= MAX_ATTACHMENT_BYTES ? `data:${a.contentType};base64,${a.content.toString('base64')}` : null,
+  }));
+}
+
 // Strips a leading "Re:"/"Fwd:"/"Fw:" (repeated, case-insensitive) so
 // "Order #123", "Re: Order #123", and "Re: Re: Fwd: Order #123" all
 // compare equal -- used to detect a message that's really a continuation
@@ -125,6 +151,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         const ccAddresses = parsed.cc
           ? (Array.isArray(parsed.cc) ? parsed.cc : [parsed.cc]).flatMap((c) => c.value.map((v) => v.address)).filter(Boolean).join(', ')
           : null;
+        const attachmentsJson = JSON.stringify(extractAttachments(parsed));
 
         // 1. Gmail category / Precedence filters (Only pull Primary & Updates)
         const gmailLabels = parsed.headers.get('x-gmail-labels');
@@ -242,6 +269,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
                 body,
                 preview: previewText,
                 cc: ccAddresses,
+                attachments: attachmentsJson,
                 createdAt: emailDate,
                 isRead: false,
               },
@@ -257,6 +285,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
                 subject: subject,
                 body: body,
                 preview: previewText,
+                attachments: attachmentsJson,
                 status: isInternalOrAutomated ? 'WAITING' : 'UNREAD',
                 businessType: isInternalOrAutomated ? 'INTERNAL' : undefined,
                 gmailCategory: 'primary',

@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight, Paperclip, FileText, Download, Image as ImageIcon
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
 import EmailBodyPreview from '@/components/EmailBodyPreview';
@@ -545,6 +545,22 @@ export default function InboxPage() {
     }
   })();
 
+  const selectedEmailAttachments: { filename: string; contentType: string; size: number; dataUrl: string | null }[] = (() => {
+    if (!selectedEmail?.attachments) return [];
+    try {
+      const parsed = JSON.parse(selectedEmail.attachments);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   // The specific keywords that actually fired for THIS email, not just the
   // template's whole keyword set — recomputed client-side from the same
   // structured keywords used server-side, since that per-match detail
@@ -836,6 +852,11 @@ export default function InboxPage() {
                       </span>
                     );
                   })()}
+                  {!!email.attachmentCount && (
+                    <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface-2 border border-border text-[9px] text-text-secondary font-mono" title={`${email.attachmentCount} attachment${email.attachmentCount === 1 ? '' : 's'}`}>
+                      <Paperclip className="w-2.5 h-2.5" /> {email.attachmentCount}
+                    </span>
+                  )}
                   <span className={`px-2 py-0.5 rounded border text-[9px] uppercase tracking-wider font-mono ${getPriorityBadge(email.priority)}`}>
                     {email.priority}
                   </span>
@@ -1194,6 +1215,48 @@ export default function InboxPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Attachments -- images, PDFs, and other docs from the original message */}
+              {selectedEmailAttachments.length > 0 && (
+                <div>
+                  <div className="px-3 py-1.5 bg-surface-2 border border-border rounded-t-xl text-[10px] font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                    <Paperclip className="w-3.5 h-3.5 text-text-secondary" />
+                    Attachments ({selectedEmailAttachments.length})
+                  </div>
+                  <div className="bg-bg border border-t-0 border-border rounded-b-xl p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {selectedEmailAttachments.map((att, i) => {
+                      const isImage = att.contentType?.startsWith('image/');
+                      return (
+                        <div key={i} className="bg-surface-2 border border-border rounded-lg p-2 space-y-1.5">
+                          {isImage && att.dataUrl ? (
+                            <img src={att.dataUrl} alt={att.filename} className="w-full h-20 object-cover rounded" />
+                          ) : (
+                            <div className="w-full h-20 flex items-center justify-center bg-surface-3 rounded">
+                              {isImage ? <ImageIcon className="w-6 h-6 text-text-muted" /> : <FileText className="w-6 h-6 text-text-muted" />}
+                            </div>
+                          )}
+                          <p className="text-[10px] text-text-primary truncate font-medium" title={att.filename}>{att.filename}</p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] text-text-muted">{formatFileSize(att.size)}</span>
+                            {att.dataUrl ? (
+                              <a
+                                href={att.dataUrl}
+                                download={att.filename}
+                                className="flex items-center gap-0.5 text-[9px] text-accent-text hover:text-accent font-semibold cursor-pointer"
+                                title="Download"
+                              >
+                                <Download className="w-3 h-3" /> Save
+                              </a>
+                            ) : (
+                              <span className="text-[9px] text-text-muted italic" title="This file was too large to store">Too large</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Internal Notes (staff-only -- never sent to the customer) -- sits between the Customer Email above and the AI Response Draft below */}
               <div>

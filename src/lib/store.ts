@@ -15,6 +15,8 @@ export interface Email {
   sender: string;
   recipient: string;
   cc?: string | null;
+  attachments?: string; // JSON array of { filename, contentType, size, dataUrl }, present on the single-email detail fetch
+  attachmentCount?: number; // present on the list fetch instead, to avoid shipping full attachment data for every row
   subject: string;
   body: string;
   preview: string;

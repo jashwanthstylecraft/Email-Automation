@@ -108,6 +108,7 @@ model Email {
   subject         String
   body            String
   preview         String
+  attachments     String       @default("[]") // JSON array of { filename, contentType, size, dataUrl } -- images/PDFs/docs from the original message, capped per-file and per-email at sync time
   status          String       @default("UNREAD") // UNREAD, WAITING, REPLIED, ESCALATED, SPAM -- a workflow state, not "has anyone opened this"
   isRead          Boolean      @default(false) // set true the first time an agent opens this email; drives bold/thin in the inbox list, independent of the workflow status above
   priority        String       @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT

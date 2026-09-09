@@ -78,7 +78,22 @@ export async function GET(request: Request) {
       include: { autoReplies: { orderBy: { createdAt: 'desc' } }, customer: true },
     });
 
-    return NextResponse.json({ emails });
+    // Attachments can be several MB of base64 each -- fine for a single
+    // email's own detail fetch, but multiplied across a whole list this
+    // would balloon the response. The list only needs to know whether any
+    // exist (for a paperclip indicator); the full data loads with the
+    // single-email GET when someone actually opens it.
+    const emailsForList = emails.map(({ attachments, ...rest }) => {
+      let count = 0;
+      try {
+        count = JSON.parse(attachments || '[]').length;
+      } catch {
+        count = 0;
+      }
+      return { ...rest, attachmentCount: count };
+    });
+
+    return NextResponse.json({ emails: emailsForList });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
