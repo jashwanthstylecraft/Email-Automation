@@ -4,12 +4,36 @@ import { prisma } from './prisma';
 import { runAIPipelineBatch } from './ai-pipeline';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
 
-// The connected mailbox for this deployment is a personal Gmail account
-// rather than a dedicated support inbox, so real customer inquiries only
-// ever arrive forwarded from these two reps -- everything else is unrelated
-// personal mail. Matched as a case-insensitive substring of the sender
-// address.
-const ALLOWED_SENDERS = ['susan@stylecraftus.com', 'sakif@stylecraftus.com'];
+// The connected mailbox is now a real, direct-to-customer support inbox
+// (previously a personal Gmail account fed only by two reps forwarding
+// contact-form mail -- that arrangement, and its sender allow-list, no
+// longer applies).
+
+// A freshly-connected real mailbox can carry a huge historical backlog of
+// unseen mail (seen in practice: 280k+ unseen on a live account) -- looping
+// through all of it one message at a time would take hours and blow well
+// past any serverless function's execution limit. Two independent caps
+// keep every sync pass fast and bounded:
+//  - SYNC_LOOKBACK_MONTHS: anything older is never looked at, permanently
+//    (the IMAP search itself excludes it -- zero cost).
+//  - MAX_MESSAGES_PER_SYNC: even within that window, only this many of the
+//    newest unseen messages are processed per pass; the rest stay unseen
+//    and get picked up on subsequent runs, draining newest-first.
+const SYNC_LOOKBACK_MONTHS = 3;
+const MAX_MESSAGES_PER_SYNC = 40;
+
+// A real, direct-to-customer mailbox also carries traffic that's never a
+// support ticket: staff emailing each other, and automated system/vendor
+// senders (bounces, payment-receipt senders, notification relays). Real
+// customers essentially never email from the mailbox's own domain, so that
+// plus a set of common automated-sender local-part patterns catches the
+// bulk of it without needing a hand-maintained sender blocklist. This is a
+// heuristic, not exhaustive -- occasional stray marketing mail from a
+// human-named address on an unrelated domain can still get through.
+const AUTOMATED_SENDER_LOCAL_PARTS = [
+  'mailer-daemon', 'postmaster', 'no-reply', 'noreply', 'donotreply', 'do-not-reply',
+  'notification', 'notifications', 'bounce', 'bounces', 'mailer', 'outgoing', 'events',
+];
 
 /**
  * Connects to the live IMAP server using environment configurations,
@@ -33,6 +57,8 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
 
   if (!inbox) throw new Error(`Inbox with ID ${inboxId} not found`);
 
+  const internalDomain = imapUser.split('@')[1]?.toLowerCase() || null;
+
   const client = new ImapFlow({
     host: imapHost,
     port: imapPort,
@@ -52,11 +78,20 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
   const emailsSynced: any[] = [];
 
   try {
-    // Search for unseen messages
-    const unseenList = await client.search({ seen: false });
+    // Search for unseen messages, bounded to the last SYNC_LOOKBACK_MONTHS --
+    // a real mailbox can carry a huge unseen backlog, and anything older
+    // than this is never worth surfacing as a "new" support request anyway.
+    const lookbackCutoff = new Date();
+    lookbackCutoff.setMonth(lookbackCutoff.getMonth() - SYNC_LOOKBACK_MONTHS);
+    const unseenInWindow = await client.search({ seen: false, since: lookbackCutoff });
 
-    if (unseenList && Array.isArray(unseenList)) {
-      console.log(`Found ${unseenList.length} unseen messages on the IMAP server.`);
+    if (unseenInWindow && Array.isArray(unseenInWindow)) {
+      // Sequence numbers increase with mailbox position, i.e. newest last --
+      // sort descending and cap so each pass processes the newest handful
+      // first; anything past the cap stays unseen and is picked up (still
+      // newest-first) on the next sync run instead of all at once.
+      const unseenList = [...unseenInWindow].sort((a, b) => b - a).slice(0, MAX_MESSAGES_PER_SYNC);
+      console.log(`Found ${unseenInWindow.length} unseen message(s) within the last ${SYNC_LOOKBACK_MONTHS} month(s); processing the newest ${unseenList.length} this pass.`);
 
       // Pass 1: fetch/parse/filter every unseen message and create its Email
       // row (unchanged from before), but don't classify yet -- collect them
@@ -111,13 +146,18 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
           continue;
         }
 
-        // 1b. Sender allow-list -- this connected mailbox is a personal Gmail
-        // account, not a dedicated support inbox, so it's mixed in with
-        // unrelated personal mail. Only these reps' forwarded customer
-        // contact-form submissions are real support content; everything else
-        // gets discarded the same way promotional mail does.
-        if (!ALLOWED_SENDERS.some((allowed) => senderEmail.toLowerCase().includes(allowed))) {
-          console.log(`Discarded non-allow-listed sender ${senderEmail}: ${subject}`);
+        // 1b. Internal staff / automated system & vendor senders -- see the
+        // AUTOMATED_SENDER_LOCAL_PARTS comment above. Neither is ever a
+        // genuine customer support request.
+        const senderLower = senderEmail.toLowerCase();
+        const senderDomain = senderLower.split('@')[1] || '';
+        const senderLocalPart = senderLower.split('@')[0] || '';
+        const isInternalOrAutomated =
+          (internalDomain && senderDomain === internalDomain) ||
+          AUTOMATED_SENDER_LOCAL_PARTS.some((p) => senderLocalPart === p || senderLocalPart.startsWith(`${p}-`) || senderLocalPart.startsWith(`${p}.`));
+
+        if (isInternalOrAutomated) {
+          console.log(`Discarded internal/automated sender ${senderEmail}: ${subject}`);
           await client.messageFlagsAdd({ seq }, ['\\Seen']);
           continue;
         }
@@ -297,7 +337,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         }
       }
     } else {
-      console.log('No unseen messages found on the IMAP server.');
+      console.log(`No unseen messages found within the last ${SYNC_LOOKBACK_MONTHS} month(s).`);
     }
   } finally {
     lock.release();
