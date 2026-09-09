@@ -96,6 +96,10 @@ export interface Integration {
 interface AppState {
   user: UserSession | null;
   emails: Email[];
+  emailsTotal: number;
+  emailsHasMore: boolean;
+  emailsPage: number;
+  isLoadingMore: boolean;
   selectedEmail: Email | null;
   settings: Settings | null;
   connectedInbox: ConnectedInbox | null;
@@ -120,6 +124,7 @@ interface AppState {
   logout: () => Promise<void>;
   fetchDashboard: (opts?: { silent?: boolean }) => Promise<void>;
   fetchEmails: (filters?: any) => Promise<void>;
+  loadMoreEmails: () => Promise<void>;
   selectEmail: (email: Email | null) => void;
   syncInbox: () => Promise<{ success: boolean; error?: string; syncedCount?: number; isLive?: boolean }>;
   approveDraft: (emailId: string) => Promise<void>;
@@ -174,6 +179,10 @@ interface AppState {
 export const useStore = create<AppState>((set, get) => ({
   user: null,
   emails: [],
+  emailsTotal: 0,
+  emailsHasMore: false,
+  emailsPage: 1,
+  isLoadingMore: false,
   selectedEmail: null,
   settings: null,
   connectedInbox: null,
@@ -263,8 +272,11 @@ export const useStore = create<AppState>((set, get) => ({
     // No-arg refreshes (after approve/archive/etc.) reuse the last explicit
     // filters so the list stays on the tab the user is looking at. The
     // default view is INBOX: only active/upcoming mail that needs action.
+    // Any call here is a filter change (or a post-action refresh) -- always
+    // resets back to page 1; loadMoreEmails is the only thing that advances
+    // the page.
     const effective = filters ?? get().lastEmailFilters ?? {};
-    set({ isLoading: true, lastEmailFilters: effective });
+    set({ isLoading: true, lastEmailFilters: effective, emailsPage: 1 });
     try {
       const params = new URLSearchParams({
         orgId: user.organizationId,
@@ -274,13 +286,19 @@ export const useStore = create<AppState>((set, get) => ({
         category: effective.category || 'ALL',
         businessType: effective.businessType || 'ALL',
         search: effective.search || '',
+        page: '1',
       });
       if (effective.dateFrom) params.set('dateFrom', effective.dateFrom);
       if (effective.dateTo) params.set('dateTo', effective.dateTo);
       const res = await fetch(`/api/inbox?${params}`);
       const data = await res.json();
-      set({ emails: data.emails, isLoading: false });
-      
+      set({
+        emails: data.emails,
+        isLoading: false,
+        emailsTotal: data.total ?? data.emails.length,
+        emailsHasMore: !!data.hasMore,
+      });
+
       // Keep selected email updated. It may have fallen out of the current
       // filtered view -- e.g. it just transitioned to REPLIED while viewing
       // the INBOX-only tab -- so fetch its own detail directly rather than
@@ -303,6 +321,39 @@ export const useStore = create<AppState>((set, get) => ({
       }
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
+    }
+  },
+
+  loadMoreEmails: async () => {
+    const user = get().user;
+    if (!user || get().isLoadingMore || !get().emailsHasMore) return;
+    const effective = get().lastEmailFilters ?? {};
+    const nextPage = get().emailsPage + 1;
+    set({ isLoadingMore: true });
+    try {
+      const params = new URLSearchParams({
+        orgId: user.organizationId,
+        status: effective.status || 'INBOX',
+        priority: effective.priority || 'ALL',
+        sentiment: effective.sentiment || 'ALL',
+        category: effective.category || 'ALL',
+        businessType: effective.businessType || 'ALL',
+        search: effective.search || '',
+        page: String(nextPage),
+      });
+      if (effective.dateFrom) params.set('dateFrom', effective.dateFrom);
+      if (effective.dateTo) params.set('dateTo', effective.dateTo);
+      const res = await fetch(`/api/inbox?${params}`);
+      const data = await res.json();
+      set((state) => ({
+        emails: [...state.emails, ...data.emails],
+        emailsPage: nextPage,
+        emailsTotal: data.total ?? state.emailsTotal,
+        emailsHasMore: !!data.hasMore,
+        isLoadingMore: false,
+      }));
+    } catch (err: any) {
+      set({ error: err.message, isLoadingMore: false });
     }
   },
 

@@ -16,6 +16,12 @@ export async function GET(request: Request) {
     const search = searchParams.get('search');
     const dateFrom = searchParams.get('dateFrom');
     const dateTo = searchParams.get('dateTo');
+    // Capped and paginated -- with thousands of emails now in a real
+    // mailbox, an unbounded findMany() shipped a multi-MB JSON payload
+    // (full body text + full autoReply bodies for every single row) on
+    // every fetch, which is exactly what made the page feel unresponsive.
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '50', 10) || 50));
 
     if (!orgId) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
@@ -81,11 +87,23 @@ export async function GET(request: Request) {
       };
     }
 
-    const emails = await prisma.email.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: { autoReplies: { orderBy: { createdAt: 'desc' } }, customer: true },
-    });
+    const [emails, total] = await Promise.all([
+      prisma.email.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          // Only what a list row actually renders (the "Sent · who" badge) --
+          // the full responseBody per reply, multiplied across every row, was
+          // a big chunk of the old payload. The single-email detail fetch
+          // pulls the complete AutoReply rows separately when opened.
+          autoReplies: { orderBy: { createdAt: 'desc' }, select: { id: true, status: true, approvedBy: true, sentAt: true } },
+          customer: true,
+        },
+      }),
+      prisma.email.count({ where }),
+    ]);
 
     // Attachments can be several MB of base64 each -- fine for a single
     // email's own detail fetch, but multiplied across a whole list this
@@ -102,7 +120,13 @@ export async function GET(request: Request) {
       return { ...rest, attachmentCount: count };
     });
 
-    return NextResponse.json({ emails: emailsForList });
+    return NextResponse.json({
+      emails: emailsForList,
+      total,
+      page,
+      limit,
+      hasMore: page * limit < total,
+    });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

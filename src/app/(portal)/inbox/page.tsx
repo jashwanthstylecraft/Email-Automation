@@ -14,6 +14,7 @@ import EmailBodyPreview from '@/components/EmailBodyPreview';
 export default function InboxPage() {
   const {
     emails, selectedEmail, selectEmail, fetchEmails,
+    emailsTotal, emailsHasMore, isLoadingMore, loadMoreEmails,
     approveDraft, rejectDraft, saveDraftEdits, regenerateDraft, sendCustomReply, resendReply,
     changeEmailStatus, assignEmailUser, markAsUnread, isLoading, user, settings,
     templates, fetchTemplates, saveTemplate, deleteEmail, archiveEmail, syncInbox, fetchDashboard,
@@ -729,7 +730,11 @@ export default function InboxPage() {
               ))}
             </div>
           </div>
+        </div>
 
+        {/* Second filter line: Category, Date Range, and Search stay grouped
+            together here rather than sharing a row with Customer Type. */}
+        <div className="px-4 py-2 border-b border-border bg-surface-1 flex items-center gap-3 flex-wrap">
           {/* Category, as a compact filter dropdown rather than a dedicated vertical-tab panel -- frees that width for the list itself */}
           <div className="flex items-center gap-2">
             <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold flex items-center gap-1">
@@ -956,6 +961,17 @@ export default function InboxPage() {
               </div>
               );
             })
+          )}
+          {emailsHasMore && (
+            <div className="p-4 text-center">
+              <button
+                onClick={() => loadMoreEmails()}
+                disabled={isLoadingMore}
+                className="px-4 py-2 border border-border hover:border-accent-border bg-surface-2 hover:bg-surface-3 text-[10px] rounded-lg font-semibold text-text-secondary hover:text-text-primary transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoadingMore ? 'Loading...' : `Load More (${emails.length} of ${emailsTotal})`}
+              </button>
+            </div>
           )}
         </div>
       </div>
