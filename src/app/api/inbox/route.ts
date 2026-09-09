@@ -54,6 +54,11 @@ export async function GET(request: Request) {
     }
     if (businessType && businessType !== 'ALL') {
       where.businessType = businessType;
+    } else {
+      // "ALL" means all real customer mail -- INTERNAL (staff/automated
+      // senders, tagged instead of discarded so nothing's silently lost)
+      // is noise here and only shows up under its own explicit filter.
+      where.businessType = { not: 'INTERNAL' };
     }
 
     if (search) {

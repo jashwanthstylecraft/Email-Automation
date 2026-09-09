@@ -788,7 +788,7 @@ export default function InboxPage() {
             <Briefcase className="w-3 h-3" /> Customer Type
           </span>
           <div className="flex gap-1">
-            {['ALL', 'B2C', 'B2B'].map((bt) => (
+            {['ALL', 'B2C', 'B2B', 'INTERNAL'].map((bt) => (
               <button
                 key={bt}
                 onClick={() => setActiveBusinessType(bt)}
@@ -798,7 +798,7 @@ export default function InboxPage() {
                     : 'bg-surface-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-3'
                 }`}
               >
-                {bt === 'ALL' ? 'All' : bt}
+                {bt === 'ALL' ? 'All' : bt === 'INTERNAL' ? 'Internal' : bt}
               </button>
             ))}
           </div>

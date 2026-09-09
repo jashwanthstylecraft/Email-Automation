@@ -148,19 +148,18 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
 
         // 1b. Internal staff / automated system & vendor senders -- see the
         // AUTOMATED_SENDER_LOCAL_PARTS comment above. Neither is ever a
-        // genuine customer support request.
+        // genuine customer support request, but rather than silently
+        // discarding them (nothing to review if the heuristic is wrong),
+        // they're imported tagged businessType 'INTERNAL' -- filtered out of
+        // the default B2C/B2B/ALL views, but still visible under their own
+        // "Internal" tab. Skips AI classification entirely below since
+        // there's nothing to classify.
         const senderLower = senderEmail.toLowerCase();
         const senderDomain = senderLower.split('@')[1] || '';
         const senderLocalPart = senderLower.split('@')[0] || '';
         const isInternalOrAutomated =
           (internalDomain && senderDomain === internalDomain) ||
           AUTOMATED_SENDER_LOCAL_PARTS.some((p) => senderLocalPart === p || senderLocalPart.startsWith(`${p}-`) || senderLocalPart.startsWith(`${p}.`));
-
-        if (isInternalOrAutomated) {
-          console.log(`Discarded internal/automated sender ${senderEmail}: ${subject}`);
-          await client.messageFlagsAdd({ seq }, ['\\Seen']);
-          continue;
-        }
 
         // 2. Integration Connection Time Constraint (Only emails received from now onward after connected)
         // Prefer the IMAP server's own INTERNALDATE (when the message actually
@@ -208,14 +207,22 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
               subject: subject,
               body: body,
               preview: previewText,
-              status: 'UNREAD',
+              status: isInternalOrAutomated ? 'WAITING' : 'UNREAD',
+              businessType: isInternalOrAutomated ? 'INTERNAL' : undefined,
               gmailCategory: 'primary',
               organizationId: inbox.organizationId,
               createdAt: emailDate,
             },
           });
 
-          pending.push({ seq, newEmail, senderEmail, senderName, subject });
+          if (isInternalOrAutomated) {
+            console.log(`Tagged internal/automated sender ${senderEmail} as INTERNAL: ${subject}`);
+            await client.messageFlagsAdd({ seq }, ['\\Seen']);
+            emailsSynced.push(newEmail);
+            syncedCount++;
+          } else {
+            pending.push({ seq, newEmail, senderEmail, senderName, subject });
+          }
         }
       }
 
