@@ -2,36 +2,35 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, getClientIp, isAdmin } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId');
-
-    if (!orgId) {
-      return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const templates = await prisma.template.findMany({
-      where: { organizationId: orgId },
+      where: { organizationId: user.organizationId },
       orderBy: { createdAt: 'desc' },
     });
 
     return NextResponse.json({ templates });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { name, subject, body: templateBody, variables, keywords, images, active, notes, organizationId } = body;
     const user = await getCurrentUser();
-
-    if (!organizationId) {
-      return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const body = await request.json();
+    const { name, subject, body: templateBody, variables, keywords, images, active, notes } = body;
 
     const template = await prisma.template.create({
       data: {
@@ -43,7 +42,7 @@ export async function POST(request: Request) {
         images: images || '[]',
         active: active !== undefined ? !!active : true,
         notes: notes || null,
-        organizationId,
+        organizationId: user.organizationId,
       },
     });
 
@@ -54,23 +53,27 @@ export async function POST(request: Request) {
       entityId: template.id,
       afterValue: template.name,
       ipAddress: getClientIp(request),
-      details: `${user?.email || 'Unknown user'} created template "${template.name}"`,
+      details: `${user.email} created template "${template.name}"`,
     });
 
     return NextResponse.json({ success: true, template });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
 export async function PUT(request: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { id, name, subject, body: templateBody, variables, keywords, images, active, notes } = body;
-    const user = await getCurrentUser();
 
     const existing = await prisma.template.findUnique({ where: { id } });
-    if (!existing) {
+    if (!existing || existing.organizationId !== user.organizationId) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 });
     }
 
@@ -103,7 +106,7 @@ export async function PUT(request: Request) {
         beforeValue: bodyChanged ? existing.body : existing.keywords,
         afterValue: bodyChanged ? templateBody : keywords,
         ipAddress: getClientIp(request),
-        details: `${user?.email || 'Unknown user'} edited ${bodyChanged ? 'the body' : 'the keywords'} of template "${existing.name}"`,
+        details: `${user.email} edited ${bodyChanged ? 'the body' : 'the keywords'} of template "${existing.name}"`,
       });
     }
     if (activeChanged) {
@@ -115,33 +118,34 @@ export async function PUT(request: Request) {
         beforeValue: String(existing.active),
         afterValue: String(!!active),
         ipAddress: getClientIp(request),
-        details: `${user?.email || 'Unknown user'} ${active ? 'enabled' : 'disabled'} template "${existing.name}"`,
+        details: `${user.email} ${active ? 'enabled' : 'disabled'} template "${existing.name}"`,
       });
     }
 
     return NextResponse.json({ success: true, template });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
 export async function DELETE(request: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user || !isAdmin(user)) {
+      return NextResponse.json({ error: 'Only Admins can delete templates' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const user = await getCurrentUser();
 
     if (!id) {
       return NextResponse.json({ error: 'Template ID required' }, { status: 400 });
     }
 
-    // Support Agents can give feedback and add keywords but cannot
-    // permanently delete a template.
-    if (!isAdmin(user)) {
-      return NextResponse.json({ error: 'Only Admins can delete templates' }, { status: 403 });
-    }
-
     const existing = await prisma.template.findUnique({ where: { id } });
+    if (!existing || existing.organizationId !== user.organizationId) {
+      return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+    }
 
     await prisma.template.delete({
       where: { id },
@@ -152,13 +156,13 @@ export async function DELETE(request: Request) {
       user,
       entityType: 'template',
       entityId: id,
-      beforeValue: existing?.name || id,
+      beforeValue: existing.name,
       ipAddress: getClientIp(request),
-      details: `${user?.email || 'Unknown user'} deleted template "${existing?.name || id}"`,
+      details: `${user.email} deleted template "${existing.name}"`,
     });
 
     return NextResponse.json({ success: true, message: 'Template deleted' });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

@@ -1,21 +1,22 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId');
     const status = searchParams.get('status'); // DRAFT, SENT, REJECTED
     const editedBy = searchParams.get('editedBy');
     const sender = searchParams.get('sender');
 
-    if (!orgId) {
-      return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
-    }
-
     const where: any = {
       wasEdited: true,
-      email: { organizationId: orgId },
+      email: { organizationId: user.organizationId },
     };
     if (status && status !== 'ALL') where.status = status;
     if (editedBy) where.editedBy = editedBy;
@@ -29,6 +30,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ editedDrafts });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

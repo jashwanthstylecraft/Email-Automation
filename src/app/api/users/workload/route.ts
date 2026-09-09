@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, isAdmin, isRecentlyActive, isInactiveTooLong } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 const OPEN_STATUSES = ['UNREAD', 'WAITING'];
 // How long an open email can sit assigned before it's flagged overdue.
@@ -13,16 +14,13 @@ const OVERDUE_MS = 2 * 60 * 60 * 1000; // 2 hours
  */
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId');
-    if (!orgId) {
-      return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
-    }
-
     const currentUser = await getCurrentUser();
     if (!currentUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    // Always the caller's own org -- a client-supplied orgId would let an
+    // admin in one org pull another org's full agent roster and workload.
+    const orgId = currentUser.organizationId;
 
     const agents = await prisma.user.findMany({
       where: isAdmin(currentUser)
@@ -68,6 +66,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ workload });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

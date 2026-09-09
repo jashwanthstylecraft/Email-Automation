@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 export async function PATCH(request: Request) {
   try {
@@ -27,6 +28,6 @@ export async function PATCH(request: Request) {
       },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

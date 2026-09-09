@@ -4,6 +4,7 @@ import { sendOutgoingMail } from '@/lib/mail-sender';
 import { parseKeywords, serializeKeywords } from '@/lib/keyword-engine';
 import { getCurrentUser, getClientIp, isAdmin } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 import {
   resolveCustomerName, extractForwardedCustomerName, extractOrderNumberFromText, first100Words,
   wrapResponseWithGreetingAndClosing, getRecentEditFeedbackExamples, generateToneAdjustedReply,
@@ -39,6 +40,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { id } = await params;
 
     let email = await prisma.email.findUnique({
@@ -51,7 +57,10 @@ export async function GET(
       },
     });
 
-    if (!email) {
+    // 404 rather than 403 for a cross-org id -- confirming an id exists in
+    // another organization at all is its own small leak, so an out-of-org
+    // email looks identical to a nonexistent one.
+    if (!email || email.organizationId !== currentUser.organizationId) {
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
@@ -144,7 +153,6 @@ export async function GET(
     // opening it refreshes their "currently viewing" lock. Admins browse
     // without ever seizing ownership -- they only reassign explicitly via
     // the ASSIGN_USER action.
-    const currentUser = await getCurrentUser();
     const includeArgs = { autoReplies: { orderBy: { createdAt: 'desc' as const } }, customer: true };
     if (currentUser && !isAdmin(currentUser)) {
       const now = new Date();
@@ -198,7 +206,7 @@ export async function GET(
       lock: { isLockedToOther, ownerName: lockOwnerName },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
@@ -207,10 +215,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { id } = await params;
     const body = await request.json();
     const { action, responseBody, status, assignedUserId, tone } = body;
-    const user = await getCurrentUser();
     const ip = getClientIp(request);
 
     const email = await prisma.email.findUnique({
@@ -218,7 +230,7 @@ export async function POST(
       include: { autoReplies: true, customer: true },
     });
 
-    if (!email) {
+    if (!email || email.organizationId !== user.organizationId) {
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
@@ -558,7 +570,7 @@ export async function POST(
       // returns a body with a raw bracket left in it.
       const { templateId } = body;
       const template = await prisma.template.findUnique({ where: { id: templateId } });
-      if (!template) {
+      if (!template || template.organizationId !== email.organizationId) {
         return NextResponse.json({ error: 'Template not found' }, { status: 404 });
       }
 
@@ -580,6 +592,12 @@ export async function POST(
 
     if (action === 'ASSIGN_TEMPLATE') {
       const { matchedTemplateId, aiConfidence } = body;
+      if (matchedTemplateId) {
+        const template = await prisma.template.findUnique({ where: { id: matchedTemplateId } });
+        if (!template || template.organizationId !== email.organizationId) {
+          return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+        }
+      }
       const updated = await prisma.email.update({
         where: { id },
         data: {
@@ -610,6 +628,9 @@ export async function POST(
       }
 
       const targetUser = await prisma.user.findUnique({ where: { id: assignedUserId } });
+      if (!targetUser || targetUser.organizationId !== user.organizationId) {
+        return NextResponse.json({ error: 'That user is not part of your organization.' }, { status: 400 });
+      }
       const updated = await prisma.email.update({
         where: { id },
         data: {
@@ -659,47 +680,53 @@ export async function POST(
         }
       });
 
+      // approvedTemplateId is client-supplied -- never trust it as a bare id
+      // for a mutation without confirming it's actually this org's template,
+      // or feedback on one email could be used to edit/disable a template
+      // belonging to a completely different organization.
       const targetTemplateId = approvedTemplateId || email.matchedTemplateId;
-      if (newKeyword && targetTemplateId) {
-        const template = await prisma.template.findUnique({
-          where: { id: targetTemplateId }
-        });
-        if (template) {
-          const structured = parseKeywords(template.keywords);
-          const normalized = newKeyword.trim().toLowerCase();
-          if (normalized && !structured.primary.includes(normalized)) {
-            structured.primary.push(normalized);
-            await prisma.template.update({
-              where: { id: targetTemplateId },
-              data: { keywords: serializeKeywords(structured) }
-            });
-            await logAudit({
-              action: 'KEYWORD_ADDED',
-              user,
-              entityType: 'keyword',
-              entityId: targetTemplateId,
-              afterValue: normalized,
-              ipAddress: ip,
-              details: `${user?.email || 'Unknown user'} added keyword "${normalized}" to template "${template.name}"`,
-            });
-          }
+      const targetTemplate = targetTemplateId
+        ? await prisma.template.findUnique({ where: { id: targetTemplateId } })
+        : null;
+      const targetTemplateInOrg = targetTemplate && targetTemplate.organizationId === email.organizationId
+        ? targetTemplate
+        : null;
+
+      if (newKeyword && targetTemplateInOrg) {
+        const structured = parseKeywords(targetTemplateInOrg.keywords);
+        const normalized = newKeyword.trim().toLowerCase();
+        if (normalized && !structured.primary.includes(normalized)) {
+          structured.primary.push(normalized);
+          await prisma.template.update({
+            where: { id: targetTemplateInOrg.id },
+            data: { keywords: serializeKeywords(structured) }
+          });
+          await logAudit({
+            action: 'KEYWORD_ADDED',
+            user,
+            entityType: 'keyword',
+            entityId: targetTemplateInOrg.id,
+            afterValue: normalized,
+            ipAddress: ip,
+            details: `${user?.email || 'Unknown user'} added keyword "${normalized}" to template "${targetTemplateInOrg.name}"`,
+          });
         }
       }
 
-      if (feedbackType === 'Disable This Rule' && targetTemplateId) {
+      if (feedbackType === 'Disable This Rule' && targetTemplateInOrg) {
         await prisma.template.update({
-          where: { id: targetTemplateId },
+          where: { id: targetTemplateInOrg.id },
           data: { active: false }
         });
         await logAudit({
           action: 'TEMPLATE_RULE_DISABLED',
           user,
           entityType: 'rule',
-          entityId: targetTemplateId,
+          entityId: targetTemplateInOrg.id,
           beforeValue: 'active',
           afterValue: 'disabled',
           ipAddress: ip,
-          details: `${user?.email || 'Unknown user'} disabled the rule for template ${targetTemplateId}`,
+          details: `${user?.email || 'Unknown user'} disabled the rule for template ${targetTemplateInOrg.id}`,
         });
       }
 
@@ -773,7 +800,7 @@ export async function POST(
 
     return NextResponse.json({ error: 'Invalid action parameter' }, { status: 400 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
@@ -782,15 +809,19 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
     const user = await getCurrentUser();
+    if (!user || !isAdmin(user)) {
+      return NextResponse.json({ error: 'Only an admin can permanently delete an email.' }, { status: 403 });
+    }
+
+    const { id } = await params;
     const ip = getClientIp(request);
 
     const email = await prisma.email.findUnique({
       where: { id }
     });
 
-    if (!email) {
+    if (!email || email.organizationId !== user.organizationId) {
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
@@ -810,6 +841,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, message: 'Email deleted successfully' });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

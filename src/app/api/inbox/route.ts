@@ -3,11 +3,19 @@ import { prisma } from '@/lib/prisma';
 import { syncOrgInbox } from '@/lib/inbox-sync';
 import { getCurrentUser, isAdmin, getClientIp } from '@/lib/auth';
 import { logAudit } from '@/lib/audit';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    // Always the caller's own org -- a client-supplied orgId would let any
+    // authenticated user read another organization's full email content
+    // just by passing a different id.
+    const orgId = user.organizationId;
     const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId');
     const status = searchParams.get('status');
     const priority = searchParams.get('priority');
     const sentiment = searchParams.get('sentiment');
@@ -22,10 +30,6 @@ export async function GET(request: Request) {
     // every fetch, which is exactly what made the page feel unresponsive.
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') || '50', 10) || 50));
-
-    if (!orgId) {
-      return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
-    }
 
     // Spam and promotional/social ("Updates") mail is never surfaced in the
     // inbox -- the sync pipeline no longer stores it, but this filter is a
@@ -128,21 +132,24 @@ export async function GET(request: Request) {
       hasMore: page * limit < total,
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { orgId, action } = body;
-
-    if (!orgId) {
-      return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    // Always the caller's own org -- never trust a client-supplied orgId, or
+    // any authenticated user could trigger a real IMAP sync (and real OpenAI
+    // classification calls) or a mass delete against a different org.
+    const orgId = user.organizationId;
+    const body = await request.json();
+    const { action } = body;
 
     if (action === 'PURGE_SPAM_PROMO') {
-      const user = await getCurrentUser();
       if (!isAdmin(user)) {
         return NextResponse.json({ error: 'Only an admin can purge spam/promotional mail.' }, { status: 403 });
       }
@@ -165,6 +172,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json(result);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

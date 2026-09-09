@@ -1,27 +1,20 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const sessionCookie = cookieStore.get('auth-session');
-
-    let userSession = null;
-    if (sessionCookie?.value) {
-      try {
-        userSession = JSON.parse(sessionCookie.value);
-      } catch (err) {
-        // Ignore parse error
-      }
-    }
-
-    if (!userSession) {
+    // getCurrentUser() verifies the cookie's signature before trusting the
+    // id inside it -- do not read/parse the raw cookie here directly.
+    const sessionUser = await getCurrentUser();
+    if (!sessionUser) {
       return NextResponse.json({ user: null });
     }
 
     const dbUser = await prisma.user.findUnique({
-      where: { id: userSession.id },
+      where: { id: sessionUser.id },
       include: { organization: true },
     });
 
@@ -41,7 +34,7 @@ export async function GET() {
       },
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 

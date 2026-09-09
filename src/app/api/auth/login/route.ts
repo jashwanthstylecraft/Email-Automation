@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import { signSessionCookie } from '@/lib/session';
+import { apiError } from '@/lib/api-error';
+
+// After this many wrong passwords in a row, further attempts are refused
+// (even with the correct password) until the lockout window passes -- there
+// was no protection at all against unlimited password guessing before this.
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
 
 export async function POST(request: Request) {
   try {
@@ -16,12 +24,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      return NextResponse.json(
+        { error: 'Too many failed login attempts. Please try again in a few minutes.' },
+        { status: 429 }
+      );
+    }
+
     const passwordValid = await bcrypt.compare(password || '', user.passwordHash);
     if (!passwordValid) {
+      const attempts = user.failedLoginAttempts + 1;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: attempts,
+          lockedUntil: attempts >= MAX_FAILED_ATTEMPTS ? new Date(Date.now() + LOCKOUT_MS) : null,
+        },
+      });
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
-    await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date(), failedLoginAttempts: 0, lockedUntil: null },
+    });
 
     const response = NextResponse.json({
       success: true,
@@ -36,8 +62,9 @@ export async function POST(request: Request) {
       },
     });
 
-    // Mock token session in cookies
-    response.cookies.set('auth-session', JSON.stringify({
+    // Signed so the cookie's contents can't be edited client-side to
+    // impersonate a different user id -- see src/lib/session.ts.
+    response.cookies.set('auth-session', signSessionCookie({
       id: user.id,
       email: user.email,
       role: user.role,
@@ -51,6 +78,6 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

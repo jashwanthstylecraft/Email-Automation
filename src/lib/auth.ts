@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
+import { verifySessionCookie } from './session';
 
 export interface SessionUser {
   id: string;
@@ -19,7 +20,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get('auth-session');
     if (!sessionCookie?.value) return null;
-    const parsed = JSON.parse(sessionCookie.value);
+    const parsed = verifySessionCookie(sessionCookie.value);
     if (!parsed?.id) return null;
     const user = await prisma.user.findUnique({ where: { id: parsed.id } });
     if (!user) return null;

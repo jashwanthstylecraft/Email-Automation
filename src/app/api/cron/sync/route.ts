@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { syncOrgInbox } from '@/lib/inbox-sync';
+import { apiError } from '@/lib/api-error';
 
 /**
  * Scheduled inbox sync (Vercel Cron hits this on a timer, see vercel.json).
@@ -27,6 +28,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ ranAt: new Date().toISOString(), results });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

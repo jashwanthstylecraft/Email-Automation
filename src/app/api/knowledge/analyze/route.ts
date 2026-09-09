@@ -4,6 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import { extractKeywordsForTemplate, parseKeywords, serializeKeywords } from '@/lib/keyword-engine';
 import { openai, OPENAI_MODEL, OPENAI_TEMPERATURE } from '@/lib/openai-client';
+import { getCurrentUser, isAdmin } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 // Exact keywords to map rules to templates for the 102 StyleCraft templates
 const ALL_TEMPLATE_KEYWORDS: Record<string, string[]> = {
@@ -172,11 +174,13 @@ Return ONLY a JSON object of the shape {"headings": ["...", "...", ...]}, with n
 
 export async function POST(request: Request) {
   try {
-    const { documentId, organizationId } = await request.json();
-
-    if (!organizationId) {
-      return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
+    const user = await getCurrentUser();
+    if (!user || !isAdmin(user)) {
+      return NextResponse.json({ error: 'Only an admin can analyze knowledge base documents.' }, { status: 403 });
     }
+    const organizationId = user.organizationId;
+
+    const { documentId } = await request.json();
 
     // 1. Read document content -- the document the user actually picked
     // always wins. The hardcoded local text file is only a fallback for the
@@ -187,7 +191,7 @@ export async function POST(request: Request) {
 
     if (documentId) {
       const doc = await prisma.document.findUnique({ where: { id: documentId } });
-      if (doc) {
+      if (doc && doc.organizationId === organizationId) {
         extractedText = doc.content;
       }
     }
@@ -376,7 +380,9 @@ export async function POST(request: Request) {
     await prisma.auditLog.create({
       data: {
         action: 'KNOWLEDGE_ANALYSIS',
-        details: `Successfully analyzed responses reference file. Imported ${createdTemplatesCount} templates and generated ${createdRulesCount} rules.`
+        userId: user.id,
+        userEmail: user.email,
+        details: `${user.email} analyzed a responses reference file. Imported ${createdTemplatesCount} templates and generated ${createdRulesCount} rules.`
       }
     });
 
@@ -386,6 +392,6 @@ export async function POST(request: Request) {
       rulesCount: createdRulesCount
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

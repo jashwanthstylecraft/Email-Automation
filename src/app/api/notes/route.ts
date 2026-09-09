@@ -1,21 +1,21 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId');
     const search = searchParams.get('search');
     const templateId = searchParams.get('templateId');
     const userId = searchParams.get('userId');
     const emailId = searchParams.get('emailId');
 
-    if (!orgId) {
-      return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
-    }
-
-    const where: any = { organizationId: orgId };
+    const where: any = { organizationId: user.organizationId };
     if (templateId) where.relatedTemplateId = templateId;
     if (userId) where.createdByUserId = userId;
     if (emailId) where.relatedEmailId = emailId;
@@ -34,18 +34,22 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ notes });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { title, noteBody, relatedTemplateId, relatedEmailId, isPinned, organizationId } = body;
     const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    if (!organizationId || !title || !noteBody) {
-      return NextResponse.json({ error: 'title, body, and organizationId are required' }, { status: 400 });
+    const body = await request.json();
+    const { title, noteBody, relatedTemplateId, relatedEmailId, isPinned } = body;
+
+    if (!title || !noteBody) {
+      return NextResponse.json({ error: 'title and body are required' }, { status: 400 });
     }
 
     const note = await prisma.internalNote.create({
@@ -55,16 +59,16 @@ export async function POST(request: Request) {
         relatedTemplateId: relatedTemplateId || null,
         relatedEmailId: relatedEmailId || null,
         isPinned: !!isPinned,
-        createdByUserId: user?.id || null,
-        createdByName: user?.email || 'Unknown',
-        updatedByUserId: user?.id || null,
-        updatedByName: user?.email || 'Unknown',
-        organizationId,
+        createdByUserId: user.id,
+        createdByName: user.email,
+        updatedByUserId: user.id,
+        updatedByName: user.email,
+        organizationId: user.organizationId,
       },
     });
 
     return NextResponse.json({ success: true, note });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

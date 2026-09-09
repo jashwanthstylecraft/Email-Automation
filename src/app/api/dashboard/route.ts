@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getCurrentUser } from '@/lib/auth';
+import { apiError } from '@/lib/api-error';
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const orgId = searchParams.get('orgId');
-
-    if (!orgId) {
-      return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const orgId = user.organizationId;
 
     // 1. Calculate primary metrics
     const totalEmails = await prisma.email.count({ where: { organizationId: orgId } });
@@ -304,6 +305,10 @@ export async function GET(request: Request) {
     const editedByUser = editedByGroup.map(g => ({ user: g.editedBy, count: g._count.id }));
 
     // 10. Recent changes & activity feed (from the audit log)
+    // AuditLog has no organizationId column (see the same note in
+    // /api/logs), so this can't be scoped per-org without a migration --
+    // acceptable while production is single-org, but flagged for when a
+    // second org is onboarded.
     const recentChanges = await prisma.auditLog.findMany({
       where: {},
       orderBy: { createdAt: 'desc' },
@@ -376,6 +381,6 @@ export async function GET(request: Request) {
       })),
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiError(error);
   }
 }

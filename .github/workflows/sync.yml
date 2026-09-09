@@ -15,4 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger inbox sync
-        run: curl -sf --max-time 60 https://stylecraft-email-automation.vercel.app/api/cron/sync
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: curl -sf --max-time 60 -H "Authorization: Bearer $CRON_SECRET" https://stylecraft-email-automations.vercel.app/api/cron/sync
