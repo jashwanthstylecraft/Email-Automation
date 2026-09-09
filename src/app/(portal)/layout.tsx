@@ -156,8 +156,10 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
           </div>
         </header>
 
-        {/* Portal Page Body */}
-        <main className="flex-1 overflow-y-auto bg-bg p-8">
+        {/* Portal Page Body -- the inbox gets tighter padding since its own
+            layout is already fighting for horizontal space; every other
+            page keeps the more spacious default. */}
+        <main className={`flex-1 overflow-y-auto bg-bg ${pathname === '/inbox' ? 'p-3' : 'p-8'}`}>
           {children}
         </main>
       </div>
