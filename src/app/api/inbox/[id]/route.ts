@@ -55,6 +55,20 @@ export async function GET(
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
+    // Bold/thin in the inbox list tracks "has anyone actually opened this"
+    // (isRead), independent of the workflow status column -- mark it read
+    // the first time its detail is fetched, i.e. the moment someone opens it.
+    if (!email.isRead) {
+      email = await prisma.email.update({
+        where: { id },
+        data: { isRead: true },
+        include: {
+          autoReplies: { orderBy: { createdAt: 'desc' } },
+          customer: true,
+        },
+      });
+    }
+
     // Dynamic auto-matcher fallback check:
     // If the email doesn't have a template matched and is not replied yet, try to match it against seeded templates.
     if (!email.matchedTemplateId && email.status !== 'REPLIED') {

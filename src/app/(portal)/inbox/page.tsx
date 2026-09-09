@@ -735,7 +735,7 @@ export default function InboxPage() {
             </div>
           ) : (
             sortedEmails.map((email) => {
-              const isUnread = email.status === 'UNREAD';
+              const isUnread = !email.isRead;
               return (
               <div
                 key={email.id}

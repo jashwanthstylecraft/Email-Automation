@@ -108,7 +108,8 @@ model Email {
   subject         String
   body            String
   preview         String
-  status          String       @default("UNREAD") // UNREAD, WAITING, REPLIED, ESCALATED, SPAM
+  status          String       @default("UNREAD") // UNREAD, WAITING, REPLIED, ESCALATED, SPAM -- a workflow state, not "has anyone opened this"
+  isRead          Boolean      @default(false) // set true the first time an agent opens this email; drives bold/thin in the inbox list, independent of the workflow status above
   priority        String       @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
   sentiment       String       @default("NEUTRAL") // POSITIVE, NEUTRAL, NEGATIVE, ANGRY
   category        String       @default("General Inquiry") // Sales, Support, Billing, Refund, Complaint, Technical, HR, etc.

@@ -19,6 +19,7 @@ export interface Email {
   body: string;
   preview: string;
   status: 'UNREAD' | 'WAITING' | 'REPLIED' | 'ESCALATED' | 'SPAM';
+  isRead: boolean;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'ANGRY';
   category: string;
@@ -301,6 +302,18 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   selectEmail: (email) => {
+    // Mark read immediately (optimistic -- the GET /api/inbox/[id] the inbox
+    // page fires right after this persists it server-side) so the bold/thin
+    // list styling updates the instant an agent opens the email, not after
+    // a round trip.
+    if (email && !email.isRead) {
+      const patched: Email = { ...email, isRead: true };
+      set((state) => ({
+        selectedEmail: patched,
+        emails: state.emails.map((e) => (e.id === email.id ? patched : e)),
+      }));
+      return;
+    }
     set({ selectedEmail: email });
   },
 
