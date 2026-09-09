@@ -14,6 +14,8 @@ export async function GET(request: Request) {
     const category = searchParams.get('category');
     const businessType = searchParams.get('businessType');
     const search = searchParams.get('search');
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo = searchParams.get('dateTo');
 
     if (!orgId) {
       return NextResponse.json({ error: 'Organization ID required' }, { status: 400 });
@@ -70,6 +72,13 @@ export async function GET(request: Request) {
         { subject: { contains: search, mode: 'insensitive' } },
         { body: { contains: search, mode: 'insensitive' } },
       ];
+    }
+
+    if (dateFrom || dateTo) {
+      where.createdAt = {
+        ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+        ...(dateTo ? { lte: new Date(dateTo) } : {}),
+      };
     }
 
     const emails = await prisma.email.findMany({

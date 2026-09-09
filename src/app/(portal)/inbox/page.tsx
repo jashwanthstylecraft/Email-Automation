@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight, Paperclip, FileText, Download, Image as ImageIcon
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight, Paperclip, FileText, Download, Image as ImageIcon, Calendar
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
 import EmailBodyPreview from '@/components/EmailBodyPreview';
@@ -32,6 +32,35 @@ export default function InboxPage() {
   const [isMailboxCollapsed, setIsMailboxCollapsed] = useState(false);
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [activeBusinessType, setActiveBusinessType] = useState('ALL');
+  const [dateRangePreset, setDateRangePreset] = useState('ALL');
+  const [customDateFrom, setCustomDateFrom] = useState('');
+  const [customDateTo, setCustomDateTo] = useState('');
+
+  // Translate the preset (or custom from/to) into concrete ISO boundaries
+  // for the API -- computed here, not on the server, since "Today"/"Last 7
+  // days" are relative to the viewer's own clock.
+  const { dateFrom, dateTo } = (() => {
+    const now = new Date();
+    if (dateRangePreset === 'TODAY') {
+      const start = new Date(now); start.setHours(0, 0, 0, 0);
+      return { dateFrom: start.toISOString(), dateTo: '' };
+    }
+    if (dateRangePreset === '7D') {
+      const start = new Date(now); start.setDate(start.getDate() - 7);
+      return { dateFrom: start.toISOString(), dateTo: '' };
+    }
+    if (dateRangePreset === '30D') {
+      const start = new Date(now); start.setDate(start.getDate() - 30);
+      return { dateFrom: start.toISOString(), dateTo: '' };
+    }
+    if (dateRangePreset === 'CUSTOM') {
+      return {
+        dateFrom: customDateFrom ? new Date(customDateFrom).toISOString() : '',
+        dateTo: customDateTo ? new Date(customDateTo + 'T23:59:59').toISOString() : '',
+      };
+    }
+    return { dateFrom: '', dateTo: '' };
+  })();
   const [replyText, setReplyText] = useState('');
   const [isEditingDraft, setIsEditingDraft] = useState(false);
   const [customReply, setCustomReply] = useState('');
@@ -139,9 +168,9 @@ export default function InboxPage() {
   }, [selectedEmail?.id]);
 
   useEffect(() => {
-    fetchEmails({ status: activeFilter, search, category: activeCategory, businessType: activeBusinessType });
+    fetchEmails({ status: activeFilter, search, category: activeCategory, businessType: activeBusinessType, dateFrom, dateTo });
     fetchTemplates();
-  }, [activeFilter, search, activeCategory, activeBusinessType]);
+  }, [activeFilter, search, activeCategory, activeBusinessType, dateFrom, dateTo]);
 
   // Keep the inbox genuinely live: actively poll the real mailbox (not just
   // re-read our own DB) every 30s, so new mail shows up without waiting on
@@ -721,6 +750,51 @@ export default function InboxPage() {
                 onClick={() => setActiveCategory('ALL')}
                 className="text-[9px] text-text-muted hover:text-text-primary cursor-pointer"
                 title="Clear category filter"
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {/* Date range -- another compact filter dropdown, with custom
+              from/to inputs revealed only when "Custom Range" is picked */}
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> Date Range
+            </span>
+            <select
+              value={dateRangePreset}
+              onChange={(e) => setDateRangePreset(e.target.value)}
+              className="bg-surface-2 border border-border rounded-md px-2 py-1 text-[10px] text-text-primary cursor-pointer outline-none focus:border-accent"
+            >
+              <option value="ALL">All Time</option>
+              <option value="TODAY">Today</option>
+              <option value="7D">Last 7 Days</option>
+              <option value="30D">Last 30 Days</option>
+              <option value="CUSTOM">Custom Range...</option>
+            </select>
+            {dateRangePreset === 'CUSTOM' && (
+              <>
+                <input
+                  type="date"
+                  value={customDateFrom}
+                  onChange={(e) => setCustomDateFrom(e.target.value)}
+                  className="bg-surface-2 border border-border rounded-md px-1.5 py-1 text-[10px] text-text-primary cursor-pointer outline-none focus:border-accent"
+                />
+                <span className="text-text-muted">–</span>
+                <input
+                  type="date"
+                  value={customDateTo}
+                  onChange={(e) => setCustomDateTo(e.target.value)}
+                  className="bg-surface-2 border border-border rounded-md px-1.5 py-1 text-[10px] text-text-primary cursor-pointer outline-none focus:border-accent"
+                />
+              </>
+            )}
+            {dateRangePreset !== 'ALL' && (
+              <button
+                onClick={() => { setDateRangePreset('ALL'); setCustomDateFrom(''); setCustomDateTo(''); }}
+                className="text-[9px] text-text-muted hover:text-text-primary cursor-pointer"
+                title="Clear date filter"
               >
                 ×
               </button>

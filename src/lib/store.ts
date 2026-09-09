@@ -275,6 +275,8 @@ export const useStore = create<AppState>((set, get) => ({
         businessType: effective.businessType || 'ALL',
         search: effective.search || '',
       });
+      if (effective.dateFrom) params.set('dateFrom', effective.dateFrom);
+      if (effective.dateTo) params.set('dateTo', effective.dateTo);
       const res = await fetch(`/api/inbox?${params}`);
       const data = await res.json();
       set({ emails: data.emails, isLoading: false });
