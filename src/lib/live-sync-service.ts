@@ -35,6 +35,18 @@ const AUTOMATED_SENDER_LOCAL_PARTS = [
   'notification', 'notifications', 'bounce', 'bounces', 'mailer', 'outgoing', 'events',
 ];
 
+// Strips a leading "Re:"/"Fwd:"/"Fw:" (repeated, case-insensitive) so
+// "Order #123", "Re: Order #123", and "Re: Re: Fwd: Order #123" all
+// compare equal -- used to detect a message that's really a continuation
+// of an already-open thread rather than a brand new conversation.
+function normalizeSubjectForThreading(subject: string): string {
+  let s = subject.trim();
+  while (/^(re|fwd|fw)\s*:\s*/i.test(s)) {
+    s = s.replace(/^(re|fwd|fw)\s*:\s*/i, '').trim();
+  }
+  return s.toLowerCase();
+}
+
 /**
  * Connects to the live IMAP server using environment configurations,
  * fetches all unseen emails, and processes them through the StyleCraft AI engine.
@@ -198,22 +210,61 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             });
 
         if (!exists) {
-          const newEmail = await prisma.email.create({
-            data: {
-              externalId: messageId,
-              sender: senderEmail,
-              recipient: inbox.emailAddress,
-              cc: ccAddresses,
-              subject: subject,
-              body: body,
-              preview: previewText,
-              status: isInternalOrAutomated ? 'WAITING' : 'UNREAD',
-              businessType: isInternalOrAutomated ? 'INTERNAL' : undefined,
-              gmailCategory: 'primary',
-              organizationId: inbox.organizationId,
-              createdAt: emailDate,
-            },
-          });
+          // Same sender still emailing about the same subject (any amount of
+          // Re:/Fwd: nesting) while the last message on it is still
+          // unresolved -- e.g. an automated notification getting re-sent, or
+          // a customer following up before anyone answered. Refresh the
+          // existing row to this newer content instead of spawning a
+          // separate item that would otherwise get its own independent
+          // AI-drafted reply for what's really the same open conversation.
+          let threadMatch: { id: string } | null = null;
+          if (!isInternalOrAutomated) {
+            const openFromSameSender = await prisma.email.findMany({
+              where: {
+                organizationId: inbox.organizationId,
+                sender: senderEmail,
+                status: { in: ['UNREAD', 'WAITING'] },
+              },
+              select: { id: true, subject: true },
+            });
+            const normalizedNew = normalizeSubjectForThreading(subject);
+            threadMatch = openFromSameSender.find((c) => normalizeSubjectForThreading(c.subject) === normalizedNew) || null;
+          }
+
+          let newEmail;
+          if (threadMatch) {
+            await prisma.autoReply.deleteMany({ where: { emailId: threadMatch.id, status: 'DRAFT' } });
+            newEmail = await prisma.email.update({
+              where: { id: threadMatch.id },
+              data: {
+                externalId: messageId,
+                subject,
+                body,
+                preview: previewText,
+                cc: ccAddresses,
+                createdAt: emailDate,
+                isRead: false,
+              },
+            });
+            console.log(`Consolidated into existing open thread from ${senderEmail}: ${subject}`);
+          } else {
+            newEmail = await prisma.email.create({
+              data: {
+                externalId: messageId,
+                sender: senderEmail,
+                recipient: inbox.emailAddress,
+                cc: ccAddresses,
+                subject: subject,
+                body: body,
+                preview: previewText,
+                status: isInternalOrAutomated ? 'WAITING' : 'UNREAD',
+                businessType: isInternalOrAutomated ? 'INTERNAL' : undefined,
+                gmailCategory: 'primary',
+                organizationId: inbox.organizationId,
+                createdAt: emailDate,
+              },
+            });
+          }
 
           if (isInternalOrAutomated) {
             console.log(`Tagged internal/automated sender ${senderEmail} as INTERNAL: ${subject}`);

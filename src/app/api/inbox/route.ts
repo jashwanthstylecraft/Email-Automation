@@ -54,10 +54,13 @@ export async function GET(request: Request) {
     }
     if (businessType && businessType !== 'ALL') {
       where.businessType = businessType;
-    } else {
+    } else if (!search) {
       // "ALL" means all real customer mail -- INTERNAL (staff/automated
       // senders, tagged instead of discarded so nothing's silently lost)
       // is noise here and only shows up under its own explicit filter.
+      // But an active search is an explicit "find this" request -- it
+      // should search everything, Internal included, not silently hide
+      // matches just because of the passive noise-reduction default.
       where.businessType = { not: 'INTERNAL' };
     }
 
