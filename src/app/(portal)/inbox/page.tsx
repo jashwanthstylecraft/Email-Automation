@@ -803,7 +803,7 @@ export default function InboxPage() {
 
           {/* Search -- a small icon that expands into an inline input instead
               of a permanent full-width bar, to match the compact filter row */}
-          <div className="flex items-center gap-1.5 ml-auto">
+          <div className="flex items-center gap-1.5">
             {isSearchOpen ? (
               <div className="relative">
                 <Search className="w-3 h-3 text-text-muted absolute left-2 top-1/2 -translate-y-1/2" />
