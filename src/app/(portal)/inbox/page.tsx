@@ -9,7 +9,6 @@ import {
   Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CircleDot, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
-import { BentoSection, BentoCard } from '@/components/MagicBento';
 import EmailBodyPreview from '@/components/EmailBodyPreview';
 
 export default function InboxPage() {
@@ -18,7 +17,7 @@ export default function InboxPage() {
     approveDraft, rejectDraft, saveDraftEdits, regenerateDraft, sendCustomReply, resendReply,
     changeEmailStatus, assignEmailUser, isLoading, user, settings,
     templates, fetchTemplates, saveTemplate, deleteEmail, archiveEmail, syncInbox, fetchDashboard,
-    dashboardCharts, saveNote, workload, fetchWorkload
+    dashboardCharts, saveNote,
   } = useStore();
 
   const TONE_OPTIONS = ['Professional', 'Friendly', 'Formal', 'Sales', 'Technical', 'Support', 'Brand Voice'];
@@ -166,35 +165,11 @@ export default function InboxPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Category counts and per-agent workload lanes for the Classify panel
-  // (independent of the current Mailbox filter)
+  // Category counts for the Category filter (independent of the current
+  // Mailbox status filter).
   useEffect(() => {
     fetchDashboard({ silent: true });
-    fetchWorkload();
   }, []);
-
-  // Classify panel: broad search across sender, subject, matched template
-  // name, assigned agent, status, and matched keywords -- separate from the
-  // Mailbox list's sender/subject-only search box.
-  const [classifyQuery, setClassifyQuery] = useState('');
-  const classifyResults = (() => {
-    const q = classifyQuery.trim().toLowerCase();
-    if (!q) return [];
-    return emails.filter((e) => {
-      const tmpl = templates.find(t => t.id === e.matchedTemplateId);
-      const agent = workload.find((w: any) => w.userId === e.assignedUserId);
-      const keywordBlob = tmpl ? JSON.stringify(parseKeywords(tmpl.keywords)).toLowerCase() : '';
-      return (
-        e.sender.toLowerCase().includes(q) ||
-        e.subject.toLowerCase().includes(q) ||
-        e.status.toLowerCase().includes(q) ||
-        (tmpl?.name.toLowerCase().includes(q)) ||
-        (agent?.name.toLowerCase().includes(q)) ||
-        (agent?.email.toLowerCase().includes(q)) ||
-        keywordBlob.includes(q)
-      );
-    }).slice(0, 30);
-  })();
 
   // Deep-link support: /inbox?emailId=... (e.g. from a customer profile) auto-selects that email once loaded
   useEffect(() => {
@@ -609,7 +584,10 @@ export default function InboxPage() {
 
   return (
     <div className="flex h-[calc(100vh-10rem)] w-full gap-3 text-xs">
-      {/* Left half of the page: Mailbox + Classify + Inbox Queue, sized down to fit */}
+      {/* Left half of the page: Mailbox + Inbox Queue -- Classify used to be a
+          third dedicated vertical-tab column here; it's now a Category
+          dropdown filter inside the Inbox Queue itself, freeing that width
+          for the actual email list. */}
       <div className="w-1/2 flex-shrink-0 flex gap-3 min-w-0">
       {/* Mailbox folders (regular mail-client sections) */}
       <div className="w-24 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-border bg-bg">
@@ -638,118 +616,6 @@ export default function InboxPage() {
               </button>
             );
           })}
-        </div>
-      </div>
-
-      {/* Classify panel */}
-      <div className="w-52 flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-border bg-bg">
-        <div className="p-4 border-b border-border bg-surface-2 space-y-3">
-          <h3 className="font-bold text-text-primary text-xs uppercase tracking-wider flex items-center gap-1.5">
-            <Tag className="w-3.5 h-3.5 text-accent-text" />
-            Classify
-          </h3>
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-text-muted absolute left-2.5 top-2" />
-            <input
-              type="text"
-              value={classifyQuery}
-              onChange={(e) => setClassifyQuery(e.target.value)}
-              placeholder="Search sender, subject, template, agent, status..."
-              className="w-full bg-bg border border-border rounded-lg pl-7 pr-2.5 py-1.5 text-[10px] text-text-primary outline-none focus:border-accent transition-colors"
-            />
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {classifyQuery.trim() ? (
-            <div className="p-2 space-y-1.5">
-              <p className="text-[9px] text-text-muted uppercase font-semibold px-1">{classifyResults.length} match{classifyResults.length === 1 ? '' : 'es'}</p>
-              {classifyResults.map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => selectEmail(e)}
-                  className={`w-full text-left p-2.5 rounded-lg border transition-colors cursor-pointer ${
-                    selectedEmail?.id === e.id
-                      ? 'bg-accent/20 border-accent-border'
-                      : 'bg-surface-2 border-border hover:bg-surface-3'
-                  }`}
-                >
-                  <p className="text-text-primary font-semibold truncate">{e.subject}</p>
-                  <p className="text-[9px] text-text-muted truncate mt-0.5">{e.sender}</p>
-                  <p className="text-[9px] text-accent-text mt-0.5">{e.status}</p>
-                </button>
-              ))}
-              {classifyResults.length === 0 && (
-                <p className="text-center text-text-muted text-[10px] py-4 px-2 leading-relaxed">No matches for "{classifyQuery}".</p>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Support agent lanes: admins see all three, agents see only their own row */}
-              {workload.length > 0 && (
-                <BentoSection className="p-2 space-y-1.5 border-b border-border">
-                  <p className="text-[9px] text-text-muted uppercase font-semibold px-1 pb-1">Support Lanes</p>
-                  {workload.map((w: any) => (
-                    <BentoCard
-                      key={w.userId}
-                      glowColor={w.isInactiveWithPending ? '239, 68, 68' : undefined}
-                      particleCount={4}
-                      className={`p-2.5 rounded-lg border ${w.isInactiveWithPending ? 'border-danger/25 bg-danger-bg' : 'border-border bg-surface-2'}`}
-                    >
-                      <div className="flex justify-between items-center gap-1">
-                        <span className="text-text-primary font-bold truncate">{w.name}</span>
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${w.isActive ? 'bg-success' : 'bg-text-muted'}`} title={w.isActive ? 'Active' : 'Offline'}></span>
-                      </div>
-                      <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1 font-mono text-[9px] text-text-secondary">
-                        <span>Assigned {w.assignedTotal}</span>
-                        <span>Replied {w.respondedCount}</span>
-                        <span>Left {w.leftToRespond}</span>
-                        <span className={w.overdueCount > 0 ? 'text-danger font-bold' : ''}>Overdue {w.overdueCount}</span>
-                      </div>
-                      {w.isInactiveWithPending && (
-                        <p className="text-[9px] text-danger font-bold mt-1">⚠ Inactive / pending</p>
-                      )}
-                    </BentoCard>
-                  ))}
-                </BentoSection>
-              )}
-
-              {/* Category classification */}
-              <div className="p-2 space-y-1">
-                <button
-                  onClick={() => setActiveCategory('ALL')}
-                  className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
-                    activeCategory === 'ALL'
-                      ? 'bg-accent/20 text-accent-text border border-accent-border'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-surface-3 border border-transparent'
-                  }`}
-                >
-                  <span className="truncate">All Categories</span>
-                  <span className="text-[9px] font-mono text-text-muted flex-shrink-0">{totalCategorized}</span>
-                </button>
-
-                {categoryList.map((cat: any) => (
-                  <button
-                    key={cat.name}
-                    onClick={() => setActiveCategory(cat.name)}
-                    title={cat.name}
-                    className={`w-full flex items-center justify-between gap-1 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer ${
-                      activeCategory === cat.name
-                        ? 'bg-accent/20 text-accent-text border border-accent-border'
-                        : 'text-text-secondary hover:text-text-primary hover:bg-surface-3 border border-transparent'
-                    }`}
-                  >
-                    <span className="truncate">{cat.name}</span>
-                    <span className="text-[9px] font-mono text-text-muted flex-shrink-0">{cat.value}</span>
-                  </button>
-                ))}
-
-                {categoryList.length === 0 && (
-                  <p className="text-center text-text-muted text-[10px] py-4 px-2 leading-relaxed">No categorized emails yet.</p>
-                )}
-              </div>
-            </>
-          )}
         </div>
       </div>
 
@@ -783,24 +649,52 @@ export default function InboxPage() {
         </div>
 
         {/* B2C / B2B filter -- one inbox, filtered by customer type rather than separate tabs */}
-        <div className="px-4 py-2 border-b border-border bg-surface-1 flex items-center gap-2">
-          <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold flex items-center gap-1">
-            <Briefcase className="w-3 h-3" /> Customer Type
-          </span>
-          <div className="flex gap-1">
-            {['ALL', 'B2C', 'B2B', 'INTERNAL'].map((bt) => (
+        <div className="px-4 py-2 border-b border-border bg-surface-1 flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold flex items-center gap-1">
+              <Briefcase className="w-3 h-3" /> Customer Type
+            </span>
+            <div className="flex gap-1">
+              {['ALL', 'B2C', 'B2B', 'INTERNAL'].map((bt) => (
+                <button
+                  key={bt}
+                  onClick={() => setActiveBusinessType(bt)}
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-semibold cursor-pointer transition-colors ${
+                    activeBusinessType === bt
+                      ? 'bg-accent text-white'
+                      : 'bg-surface-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-3'
+                  }`}
+                >
+                  {bt === 'ALL' ? 'All' : bt === 'INTERNAL' ? 'Internal' : bt}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Category, as a compact filter dropdown rather than a dedicated vertical-tab panel -- frees that width for the list itself */}
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold flex items-center gap-1">
+              <Tag className="w-3 h-3" /> Category
+            </span>
+            <select
+              value={activeCategory}
+              onChange={(e) => setActiveCategory(e.target.value)}
+              className="bg-surface-2 border border-border rounded-md px-2 py-1 text-[10px] text-text-primary cursor-pointer outline-none focus:border-accent"
+            >
+              <option value="ALL">All ({totalCategorized})</option>
+              {categoryList.map((cat: any) => (
+                <option key={cat.name} value={cat.name}>{cat.name} ({cat.value})</option>
+              ))}
+            </select>
+            {activeCategory !== 'ALL' && (
               <button
-                key={bt}
-                onClick={() => setActiveBusinessType(bt)}
-                className={`px-2.5 py-1 rounded-md text-[10px] font-semibold cursor-pointer transition-colors ${
-                  activeBusinessType === bt
-                    ? 'bg-accent text-white'
-                    : 'bg-surface-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-3'
-                }`}
+                onClick={() => setActiveCategory('ALL')}
+                className="text-[9px] text-text-muted hover:text-text-primary cursor-pointer"
+                title="Clear category filter"
               >
-                {bt === 'ALL' ? 'All' : bt === 'INTERNAL' ? 'Internal' : bt}
+                ×
               </button>
-            ))}
+            )}
           </div>
         </div>
 
