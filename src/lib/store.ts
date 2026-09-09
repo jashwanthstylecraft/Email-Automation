@@ -127,6 +127,7 @@ interface AppState {
   sendCustomReply: (emailId: string, text: string) => Promise<void>;
   resendReply: (emailId: string, text: string) => Promise<boolean>;
   changeEmailStatus: (emailId: string, status: string) => Promise<void>;
+  markAsUnread: (emailId: string) => Promise<void>;
   deleteEmail: (emailId: string) => Promise<void>;
   archiveEmail: (emailId: string) => Promise<void>;
   assignEmailUser: (emailId: string, userId: string) => Promise<void>;
@@ -455,6 +456,24 @@ export const useStore = create<AppState>((set, get) => ({
       if (res.ok) {
         await get().fetchEmails();
         await get().fetchDashboard();
+      }
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  markAsUnread: async (emailId) => {
+    try {
+      const res = await fetch(`/api/inbox/${emailId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'MARK_UNREAD' }),
+      });
+      if (res.ok) {
+        set((state) => ({
+          emails: state.emails.map((e) => (e.id === emailId ? { ...e, isRead: false } : e)),
+          selectedEmail: state.selectedEmail?.id === emailId ? { ...state.selectedEmail, isRead: false } : state.selectedEmail,
+        }));
       }
     } catch (err: any) {
       set({ error: err.message });

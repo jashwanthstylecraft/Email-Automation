@@ -15,7 +15,7 @@ export default function InboxPage() {
   const {
     emails, selectedEmail, selectEmail, fetchEmails,
     approveDraft, rejectDraft, saveDraftEdits, regenerateDraft, sendCustomReply, resendReply,
-    changeEmailStatus, assignEmailUser, isLoading, user, settings,
+    changeEmailStatus, assignEmailUser, markAsUnread, isLoading, user, settings,
     templates, fetchTemplates, saveTemplate, deleteEmail, archiveEmail, syncInbox, fetchDashboard,
     dashboardCharts, saveNote,
   } = useStore();
@@ -26,6 +26,8 @@ export default function InboxPage() {
 
   const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [activeFilter, setActiveFilter] = useState(searchParams.get('status') || 'INBOX');
   const [isMailboxCollapsed, setIsMailboxCollapsed] = useState(false);
   const [activeCategory, setActiveCategory] = useState('ALL');
@@ -708,18 +710,42 @@ export default function InboxPage() {
               </button>
             )}
           </div>
-        </div>
 
-        {/* Search */}
-        <div className="p-4 border-b border-border relative">
-          <Search className="w-4 h-4 text-text-muted absolute left-7 top-7" />
-          <input
-            type="text"
-            className="w-full bg-bg border border-border rounded-lg pl-10 pr-4 py-2 text-xs text-text-primary outline-none focus:border-accent transition-colors"
-            placeholder="Search sender, subject..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          {/* Search -- a small icon that expands into an inline input instead
+              of a permanent full-width bar, to match the compact filter row */}
+          <div className="flex items-center gap-1.5 ml-auto">
+            {isSearchOpen ? (
+              <div className="relative">
+                <Search className="w-3 h-3 text-text-muted absolute left-2 top-1/2 -translate-y-1/2" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  className="w-40 bg-surface-2 border border-border rounded-md pl-6 pr-6 py-1 text-[10px] text-text-primary outline-none focus:border-accent transition-colors"
+                  placeholder="Search sender, subject..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onBlur={() => { if (!search.trim()) setIsSearchOpen(false); }}
+                />
+                {search && (
+                  <button
+                    onClick={() => { setSearch(''); setIsSearchOpen(false); }}
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer"
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                onClick={() => { setIsSearchOpen(true); requestAnimationFrame(() => searchInputRef.current?.focus()); }}
+                className="p-1.5 rounded-md bg-surface-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-3 cursor-pointer transition-colors"
+                title="Search sender, subject..."
+              >
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Email list container */}
@@ -754,6 +780,18 @@ export default function InboxPage() {
                     <span className="text-[9px] text-text-muted block truncate">{email.sender}</span>
                   </div>
                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {!isUnread && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markAsUnread(email.id);
+                        }}
+                        className="p-1 hover:bg-surface-3 rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                        title="Mark as Unread"
+                      >
+                        <Mail className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1471,6 +1509,16 @@ export default function InboxPage() {
                     className="px-4 py-2 border border-border hover:border-accent-border bg-surface-2 hover:bg-surface-3 text-xs rounded-lg font-semibold text-text-secondary hover:text-text-primary transition-all cursor-pointer"
                   >
                     {sentReply ? 'Reply Again' : 'Write Manual Reply'}
+                  </button>
+                )}
+                {selectedEmail.isRead && (
+                  <button
+                    onClick={() => markAsUnread(selectedEmail.id)}
+                    className="flex items-center gap-1.5 px-3 py-2 border border-border hover:border-accent-border bg-surface-2 hover:bg-surface-3 text-xs rounded-lg font-semibold text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+                    title="Mark as Unread"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    Mark as Unread
                   </button>
                 )}
                 <button

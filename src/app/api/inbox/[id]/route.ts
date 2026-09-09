@@ -542,6 +542,14 @@ export async function POST(
       return NextResponse.json({ success: true, email: updated });
     }
 
+    if (action === 'MARK_UNREAD') {
+      const updated = await prisma.email.update({
+        where: { id },
+        data: { isRead: false },
+      });
+      return NextResponse.json({ success: true, email: updated });
+    }
+
     if (action === 'FILL_TEMPLATE') {
       // An agent manually picked a template from the dropdown -- a template
       // match never calls the API, so this is a deterministic fill: the
