@@ -9,6 +9,7 @@ import {
   Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight, Paperclip, FileText, Download, Image as ImageIcon, Calendar
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
+import { splitThread } from '@/lib/email-thread';
 import EmailBodyPreview from '@/components/EmailBodyPreview';
 
 export default function InboxPage() {
@@ -24,6 +25,7 @@ export default function InboxPage() {
   const TONE_OPTIONS = ['Professional', 'Friendly', 'Formal', 'Sales', 'Technical', 'Support', 'Brand Voice'];
   const [selectedTone, setSelectedTone] = useState('Professional');
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [showRawBody, setShowRawBody] = useState(false);
 
   const searchParams = useSearchParams();
   const [search, setSearch] = useState('');
@@ -538,6 +540,16 @@ export default function InboxPage() {
       default: return 'text-text-secondary';
     }
   };
+
+  // The raw body is really a whole quoted conversation glued into one
+  // string once any reply has happened -- split into its actual
+  // message/reply/message turns, legal boilerplate and signature noise
+  // stripped from each, so an agent reads the real conversation instead of
+  // hunting for it inside a wall of quoted disclaimers.
+  const threadTurns = useMemo(
+    () => (selectedEmail ? splitThread(selectedEmail.body) : []),
+    [selectedEmail?.id, selectedEmail?.body]
+  );
 
   const latestDraft = selectedEmail?.autoReplies?.find((r) => r.status === 'DRAFT');
   // autoReplies comes back newest-first, so [0] is the most recent send --
@@ -1292,11 +1304,22 @@ export default function InboxPage() {
                 )}
               </div>
 
-              {/* Email Content Box (Customer Email) */}
+              {/* Email Content Box (Customer Email) -- shown as its actual
+                  message/reply/message turns rather than one raw quoted
+                  blob, with legal boilerplate and signature noise stripped
+                  from each turn. */}
               <div>
-                <div className="px-3 py-1.5 bg-surface-2 border border-border rounded-t-xl text-[10px] font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-text-secondary" />
-                  Original Message Body
+                <div className="px-3 py-1.5 bg-surface-2 border border-border rounded-t-xl text-[10px] font-semibold text-text-secondary uppercase tracking-wider flex items-center justify-between gap-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-text-secondary" />
+                    {threadTurns.length > 1 ? `Conversation (${threadTurns.length} messages)` : 'Original Message Body'}
+                  </span>
+                  <button
+                    onClick={() => setShowRawBody((v) => !v)}
+                    className="text-[9px] normal-case font-semibold text-text-muted hover:text-text-primary cursor-pointer"
+                  >
+                    {showRawBody ? 'Show cleaned' : 'Show raw original'}
+                  </button>
                 </div>
                 <div className="bg-bg border border-t-0 border-border rounded-b-xl">
                   {(selectedEmail.recipient || selectedEmail.cc) && (
@@ -1309,9 +1332,35 @@ export default function InboxPage() {
                       )}
                     </div>
                   )}
-                  <div className="p-5 text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">
-                    {selectedEmail.body}
-                  </div>
+                  {showRawBody ? (
+                    <div className="p-5 text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">
+                      {selectedEmail.body}
+                    </div>
+                  ) : (
+                    <div className="p-5 space-y-3">
+                      {threadTurns.map((turn, i) => {
+                        const isLatest = i === threadTurns.length - 1;
+                        return (
+                          <div
+                            key={i}
+                            className={`rounded-lg border p-3.5 ${isLatest ? 'border-accent-border bg-accent-bg' : 'border-border bg-surface-2'}`}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <span className={`text-[9px] uppercase tracking-wider font-bold ${isLatest ? 'text-accent-text' : 'text-text-muted'}`}>
+                                {isLatest ? 'Latest message' : `Earlier in this thread`}
+                              </span>
+                              {turn.meta && (
+                                <span className="text-[9px] text-text-muted font-mono truncate max-w-[60%]" title={turn.meta}>{turn.meta}</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">
+                              {turn.text}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1325,10 +1374,13 @@ export default function InboxPage() {
                   <div className="bg-bg border border-t-0 border-border rounded-b-xl p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
                     {selectedEmailAttachments.map((att, i) => {
                       const isImage = att.contentType?.startsWith('image/');
+                      const isVideo = att.contentType?.startsWith('video/');
                       return (
                         <div key={i} className="bg-surface-2 border border-border rounded-lg p-2 space-y-1.5">
                           {isImage && att.dataUrl ? (
                             <img src={att.dataUrl} alt={att.filename} className="w-full h-20 object-cover rounded" />
+                          ) : isVideo && att.dataUrl ? (
+                            <video src={att.dataUrl} controls className="w-full h-20 object-cover rounded bg-black" />
                           ) : (
                             <div className="w-full h-20 flex items-center justify-center bg-surface-3 rounded">
                               {isImage ? <ImageIcon className="w-6 h-6 text-text-muted" /> : <FileText className="w-6 h-6 text-text-muted" />}

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { prisma } from './prisma';
 import { parseKeywords, matchTemplates, TemplateForScoring, MatchResult } from './keyword-engine';
 import { openai, OPENAI_MODEL, OPENAI_MAX_TOKENS, OPENAI_TEMPERATURE } from './openai-client';
+import { cleanEmailText } from './email-thread';
 
 export interface AIPipelineResult {
   language: string;
@@ -137,12 +138,13 @@ export function stripEmailBoilerplate(body: string): string {
     text = afterMarker.slice(i).join('\n');
   }
 
-  const sigMatch = text.match(/^--\s*$/m);
-  if (sigMatch?.index !== undefined) {
-    text = text.slice(0, sigMatch.index);
-  }
-
-  return text.trim() || body.trim();
+  // Beyond the forward-header skip above, a real reply thread also carries
+  // its own accumulated noise -- every earlier quoted message's signature,
+  // and near-boilerplate legal/compliance paragraphs (confidentiality
+  // notices, debt-collection disclaimers) that repeat almost verbatim
+  // across unrelated senders and can dominate keyword scoring on their own.
+  // cleanEmailText strips both, keeping every real turn's actual content.
+  return cleanEmailText(text) || body.trim();
 }
 
 /**
