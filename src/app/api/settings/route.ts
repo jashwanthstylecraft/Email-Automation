@@ -52,7 +52,7 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const { systemPrompt, tone, greeting, closing, autoReplyMode, confidenceThreshold } = body;
+    const { systemPrompt, tone, greeting, closing, autoReplyMode, confidenceThreshold, templateSheetUrl } = body;
     const organizationId = user.organizationId;
 
     const settings = await prisma.settings.upsert({
@@ -64,6 +64,7 @@ export async function PUT(request: Request) {
         closing,
         autoReplyMode,
         confidenceThreshold: parseFloat(confidenceThreshold),
+        templateSheetUrl: templateSheetUrl || null,
       },
       create: {
         organizationId,
@@ -73,6 +74,7 @@ export async function PUT(request: Request) {
         closing,
         autoReplyMode,
         confidenceThreshold: parseFloat(confidenceThreshold),
+        templateSheetUrl: templateSheetUrl || null,
       },
     });
 

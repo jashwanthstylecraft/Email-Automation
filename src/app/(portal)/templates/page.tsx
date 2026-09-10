@@ -46,9 +46,23 @@ const KEYWORD_CATEGORIES: { key: keyof StructuredKeywords; label: string; hint: 
 
 export default function TemplatesPage() {
   const {
-    templates, fetchTemplates, saveTemplate, deleteTemplate, isLoading, user
+    templates, fetchTemplates, saveTemplate, deleteTemplate, isLoading, user, syncTemplatesFromSheet
   } = useStore();
   const isAdmin = user?.role === 'Admin';
+  const [isSyncingSheet, setIsSyncingSheet] = useState(false);
+  const [sheetSyncMsg, setSheetSyncMsg] = useState<string | null>(null);
+
+  const handleSyncFromSheet = async () => {
+    if (!window.confirm('This replaces every existing template and keyword rule with what\'s currently in the linked spreadsheet. Continue?')) {
+      return;
+    }
+    setIsSyncingSheet(true);
+    setSheetSyncMsg(null);
+    const result = await syncTemplatesFromSheet();
+    setIsSyncingSheet(false);
+    setSheetSyncMsg(result.success ? `Synced ${result.count} template(s) from the spreadsheet.` : (result.error || 'Sync failed.'));
+    setTimeout(() => setSheetSyncMsg(null), 5000);
+  };
   const searchParams = useSearchParams();
   const activeQueryFilter = searchParams.get('active'); // "true" | "false" | null
 
@@ -352,6 +366,17 @@ export default function TemplatesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={handleSyncFromSheet}
+              disabled={isSyncingSheet}
+              title="Replace all templates/keywords with what's currently in the linked spreadsheet (Settings → Template Spreadsheet URL)"
+              className={`flex items-center gap-1.5 px-4 py-2 bg-surface-2 border border-border hover:border-accent-border text-xs font-semibold rounded-lg text-text-secondary hover:text-text-primary transition-all cursor-pointer ${isSyncingSheet ? 'opacity-60 pointer-events-none' : ''}`}
+            >
+              {isSyncingSheet ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              {isSyncingSheet ? 'Syncing...' : 'Sync from Spreadsheet'}
+            </button>
+          )}
           <label className={`flex items-center gap-1.5 px-4 py-2 bg-surface-2 border border-border hover:border-accent-border text-xs font-semibold rounded-lg text-text-secondary hover:text-text-primary transition-all cursor-pointer ${isParsingDocx ? 'opacity-60 pointer-events-none' : ''}`}>
             {isParsingDocx ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             {isParsingDocx ? 'Reading Document...' : 'Upload Template (.docx)'}
@@ -366,6 +391,16 @@ export default function TemplatesPage() {
           </button>
         </div>
       </div>
+
+      {sheetSyncMsg && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-accent-bg border border-accent-border rounded-lg text-accent-text text-xs">
+          <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+          {sheetSyncMsg}
+          <button onClick={() => setSheetSyncMsg(null)} className="ml-auto text-accent-text hover:text-accent-text cursor-pointer">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {docxError && (
         <div className="flex items-center gap-2 px-4 py-2.5 bg-danger-bg border border-danger/25 rounded-lg text-danger text-xs">

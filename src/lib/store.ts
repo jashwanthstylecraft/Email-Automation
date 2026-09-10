@@ -47,6 +47,7 @@ export interface Settings {
   closing: string;
   autoReplyMode: 'AUTO' | 'DRAFT' | 'MANUAL';
   confidenceThreshold: number;
+  templateSheetUrl?: string | null;
 }
 
 export interface ConnectedInbox {
@@ -149,6 +150,7 @@ interface AppState {
   fetchTemplates: () => Promise<void>;
   saveTemplate: (template: Omit<Template, 'id'> & { id?: string }) => Promise<void>;
   deleteTemplate: (id: string) => Promise<void>;
+  syncTemplatesFromSheet: () => Promise<{ success: boolean; count?: number; error?: string }>;
   fetchIntegrations: () => Promise<void>;
   saveIntegration: (integration: any) => Promise<void>;
   auditLogs: any[];
@@ -742,6 +744,20 @@ export const useStore = create<AppState>((set, get) => ({
       }
     } catch (err: any) {
       set({ error: err.message });
+    }
+  },
+
+  syncTemplatesFromSheet: async () => {
+    try {
+      const res = await fetch('/api/templates/sync-from-sheet', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        await get().fetchTemplates();
+        return { success: true, count: data.count };
+      }
+      return { success: false, error: data.error };
+    } catch (err: any) {
+      return { success: false, error: err.message };
     }
   },
 

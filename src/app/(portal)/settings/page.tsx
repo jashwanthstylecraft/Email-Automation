@@ -21,6 +21,7 @@ export default function SettingsPage() {
   const [closing, setClosing] = useState('Regards,\nSupport Team');
   const [autoReplyMode, setAutoReplyMode] = useState('DRAFT');
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.8);
+  const [templateSheetUrl, setTemplateSheetUrl] = useState('');
   const [isSaved, setIsSaved] = useState(false);
 
   const [newB2BSender, setNewB2BSender] = useState('');
@@ -66,6 +67,7 @@ export default function SettingsPage() {
       setClosing(settings.closing);
       setAutoReplyMode(settings.autoReplyMode);
       setConfidenceThreshold(settings.confidenceThreshold);
+      setTemplateSheetUrl(settings.templateSheetUrl || '');
     }
   }, [settings]);
 
@@ -78,6 +80,7 @@ export default function SettingsPage() {
       closing,
       autoReplyMode: autoReplyMode as any,
       confidenceThreshold: parseFloat(confidenceThreshold.toString()),
+      templateSheetUrl: templateSheetUrl.trim() || null,
     });
 
     setIsSaved(true);
@@ -175,6 +178,21 @@ export default function SettingsPage() {
                 rows={3}
                 className="w-full bg-surface-3 border border-border rounded-lg p-3 text-text-primary outline-none focus:border-accent font-mono"
               />
+            </div>
+
+            {/* Template Spreadsheet URL -- the sheet the Templates page's "Sync from Spreadsheet" button pulls from */}
+            <div>
+              <label className="block font-semibold text-text-secondary uppercase tracking-wider mb-2">Template Spreadsheet URL</label>
+              <input
+                type="text"
+                value={templateSheetUrl}
+                onChange={(e) => setTemplateSheetUrl(e.target.value)}
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-text-primary outline-none focus:border-accent font-mono"
+              />
+              <p className="text-[10px] text-text-muted mt-1">
+                The Google Sheet templates/keywords are synced from (Templates page → Sync from Spreadsheet). Share it as "Anyone with the link" (Viewer) so the server can read it.
+              </p>
             </div>
           </div>
         </div>

@@ -69,6 +69,7 @@ model Settings {
   closing        String       @default("Regards,\nSupport Team")
   autoReplyMode  String       @default("DRAFT") // AUTO (Fully Automatic), DRAFT (AI Draft -> Human Approval), MANUAL (Manual Only)
   confidenceThreshold Float @default(0.8)
+  templateSheetUrl String? // Google Sheets share link templates/keywords are synced from (Templates page "Sync from Spreadsheet")
 }
 
 // Caches an AI-generated reply by a hash of (subject + first-100-words-of-body)
