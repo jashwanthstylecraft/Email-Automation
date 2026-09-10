@@ -299,25 +299,26 @@ export const useStore = create<AppState>((set, get) => ({
         emailsHasMore: !!data.hasMore,
       });
 
-      // Keep selected email updated. It may have fallen out of the current
-      // filtered view -- e.g. it just transitioned to REPLIED while viewing
-      // the INBOX-only tab -- so fetch its own detail directly rather than
-      // leaving the open panel stuck showing pre-action data.
+      // Keep selected email updated -- always via its own full detail fetch,
+      // never from this list response. The list's rows carry a trimmed
+      // autoReplies summary (no responseBody) to keep the list payload
+      // small, so using one of them directly here was wiping out whatever
+      // draft was just shown (e.g. right after Regenerate Draft: the
+      // regenerate call succeeds, but this refresh immediately overwrote
+      // selectedEmail with the trimmed row, making the new draft vanish).
+      // It may also have fallen out of the current filtered view entirely --
+      // e.g. it just transitioned to REPLIED while viewing the INBOX-only
+      // tab -- which this same full fetch handles too.
       const selected = get().selectedEmail;
       if (selected) {
-        const updatedSelected = data.emails.find((e: Email) => e.id === selected.id);
-        if (updatedSelected) {
-          set({ selectedEmail: updatedSelected });
-        } else {
-          fetch(`/api/inbox/${selected.id}`)
-            .then((r) => r.json())
-            .then((d) => {
-              if (d.email && get().selectedEmail?.id === selected.id) {
-                set({ selectedEmail: d.email });
-              }
-            })
-            .catch(() => {});
-        }
+        fetch(`/api/inbox/${selected.id}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.email && get().selectedEmail?.id === selected.id) {
+              set({ selectedEmail: d.email });
+            }
+          })
+          .catch(() => {});
       }
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
