@@ -557,8 +557,11 @@ export default function InboxPage() {
   const handleRegenerateDraft = async () => {
     if (!selectedEmail) return;
     setIsRegenerating(true);
-    await regenerateDraft(selectedEmail.id, selectedTone);
+    const result = await regenerateDraft(selectedEmail.id, selectedTone);
     setIsRegenerating(false);
+    if (!result.success) {
+      showSendToast(result.error || 'Failed to regenerate draft');
+    }
   };
 
   // Matched template entity lookup (with name and slug fallbacks to prevent title mismatch bugs)

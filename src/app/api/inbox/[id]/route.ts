@@ -366,13 +366,27 @@ export async function POST(
       const orderNumber = extractOrderNumberFromText(`${email.subject} ${cleanBody}`);
 
       const feedbackBlock = await getRecentEditFeedbackExamples(email.organizationId);
-      const rawReply = await generateToneAdjustedReply(
-        email.subject,
-        first100Words(cleanBody),
-        tone,
-        template?.body ?? null,
-        feedbackBlock
-      );
+      let rawReply: string;
+      try {
+        rawReply = await generateToneAdjustedReply(
+          email.subject,
+          first100Words(cleanBody),
+          tone,
+          template?.body ?? null,
+          feedbackBlock
+        );
+      } catch (aiError: any) {
+        // Unlike the sync-time batch pipeline (which falls back to a
+        // generic reply on an OpenAI failure), regenerating a draft has
+        // nothing sensible to fall back to -- the whole point is a fresh,
+        // tone-adjusted rewrite. Surface a clear, specific error instead of
+        // letting this bubble up as a generic 500.
+        console.error('generateToneAdjustedReply failed:', aiError?.status, aiError?.code, aiError?.message);
+        const reason = aiError?.status === 429 || aiError?.code === 'insufficient_quota'
+          ? 'The AI service has hit its usage limit. Check the OpenAI account\'s billing/rate limits.'
+          : 'The AI service failed to generate a reply. Please try again in a moment.';
+        return NextResponse.json({ error: reason }, { status: 502 });
+      }
       const finalBody = wrapResponseWithGreetingAndClosing(rawReply, customerName, greetingText, closingSignature, { orderNumber });
 
       const draft = email.autoReplies.find((r) => r.status === 'DRAFT');

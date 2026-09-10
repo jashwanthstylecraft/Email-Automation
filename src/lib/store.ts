@@ -130,7 +130,7 @@ interface AppState {
   approveDraft: (emailId: string) => Promise<void>;
   rejectDraft: (emailId: string) => Promise<void>;
   saveDraftEdits: (emailId: string, text: string) => Promise<void>;
-  regenerateDraft: (emailId: string, tone: string) => Promise<boolean>;
+  regenerateDraft: (emailId: string, tone: string) => Promise<{ success: boolean; error?: string }>;
   sendCustomReply: (emailId: string, text: string) => Promise<void>;
   resendReply: (emailId: string, text: string) => Promise<boolean>;
   changeEmailStatus: (emailId: string, status: string) => Promise<void>;
@@ -456,13 +456,13 @@ export const useStore = create<AppState>((set, get) => ({
       const data = await res.json();
       if (res.ok) {
         await get().fetchEmails();
-        return true;
+        return { success: true };
       }
       set({ error: data.error });
-      return false;
+      return { success: false, error: data.error };
     } catch (err: any) {
       set({ error: err.message });
-      return false;
+      return { success: false, error: err.message };
     }
   },
 
