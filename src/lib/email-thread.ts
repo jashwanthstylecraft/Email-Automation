@@ -48,6 +48,26 @@ function stripSignatureBlock(text: string): string {
   return sigMatch?.index !== undefined ? text.slice(0, sigMatch.index) : text;
 }
 
+// Most real signatures carry no "-- " delimiter at all -- they just follow
+// straight on from a sign-off line ("Best regards,", "Thanks,", "Sincerely,")
+// with a name, then company/title/phone/address/social-link clutter. That
+// sign-off phrase is itself an extremely reliable boundary: it is
+// essentially never followed by more of the actual message, only by the
+// name and contact block. Everything from the first standalone sign-off
+// line onward is dropped, as long as there's real content before it.
+const VALEDICTION_LINE_RE = /^[ \t]*(?:best(?: regards| wishes)?|regards|warm(?:est)? regards|kind(?:est)? regards|many thanks|thanks(?: (?:so much|again|a (?:lot|bunch)))?|thank you(?: (?:so much|again))?|sincerely(?: yours)?|respectfully(?: yours)?|cheers|yours (?:truly|sincerely|faithfully)|with (?:gratitude|appreciation))[,.!]?[ \t]*$/im;
+
+function stripValedictionSignoff(text: string): string {
+  const match = text.match(VALEDICTION_LINE_RE);
+  if (match?.index === undefined) return text;
+  const before = text.slice(0, match.index).trim();
+  // Guard against nuking a message that's little more than the sign-off
+  // itself (e.g. a one-line "Thanks!" reply with nothing substantive above
+  // it) -- keep the whole thing rather than returning near-nothing.
+  if (before.length < 15) return text;
+  return before;
+}
+
 function stripBoilerplateParagraphs(text: string): string {
   // A "blank" line inside a quoted block still carries its "> " marker(s),
   // so it never reads as empty to a plain \n{2,} split -- normalize those to
@@ -78,6 +98,7 @@ function stripImagePlaceholderLines(text: string): string {
 // ENTIRELY boilerplate (rare) doesn't just vanish.
 function cleanTurnText(raw: string): string {
   let text = stripSignatureBlock(raw);
+  text = stripValedictionSignoff(text);
   text = stripImagePlaceholderLines(text);
   text = stripBoilerplateParagraphs(text);
   text = text.replace(/\n{3,}/g, '\n\n').trim();
