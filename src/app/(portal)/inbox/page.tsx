@@ -108,6 +108,12 @@ export default function InboxPage() {
       .then(data => {
         setThreadContext(data.threadContext || []);
         setLockInfo(data.lock || { isLockedToOther: false, ownerName: null });
+        // The list view's rows only carry a trimmed autoReplies summary (no
+        // responseBody -- kept out of the list payload for pagination), so
+        // an email opened straight from the list has no draft text to show
+        // until this full single-email fetch replaces it with the complete
+        // row, replies included.
+        if (data.email) selectEmail(data.email);
       })
       .catch(() => {
         setThreadContext([]);
