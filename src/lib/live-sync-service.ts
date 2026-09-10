@@ -35,6 +35,17 @@ const AUTOMATED_SENDER_LOCAL_PARTS = [
   'notification', 'notifications', 'bounce', 'bounces', 'mailer', 'outgoing', 'events',
 ];
 
+// A local-part pattern alone misses automated senders that use an ordinary-
+// looking address on their own domain (a payment processor's decline
+// report, a carrier's billing notice) -- these never come from a real
+// customer, so the domain itself is enough to tag them INTERNAL. Found via
+// a gap analysis of a month of real mail that was landing in the B2C/B2B
+// queue as if it needed a reply.
+const AUTOMATED_VENDOR_DOMAINS = [
+  'fedex.com', // FedEx Billing Online invoice notices
+  'gwmail1.ebizcharge.com', // EBizCharge daily decline reports
+];
+
 // Attachments (images/PDFs/docs) are stored inline as base64 data URIs --
 // there's no cloud object storage in this deployment, and the DB is the
 // only persistence available. Capped per-file and per-email so one email
@@ -49,6 +60,30 @@ interface StoredAttachment {
   contentType: string;
   size: number;
   dataUrl: string | null; // null when skipped for being over MAX_ATTACHMENT_BYTES
+}
+
+// mailparser's `.text` is only populated when the message has a plain-text
+// MIME part -- an HTML-only email (common from contact-form/relay senders)
+// left `body` completely empty, so there was nothing for classification,
+// keyword matching, or drafting to work with at all. This is a plain
+// best-effort strip, not a real renderer -- fine for feeding downstream text
+// analysis, never used to re-render as HTML anywhere.
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;/gi, "'")
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 function extractAttachments(parsed: { attachments?: { filename?: string; contentType: string; size: number; content: Buffer }[] }): StoredAttachment[] {
@@ -145,7 +180,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         const senderEmail = parsed.from?.value[0]?.address || 'unknown@sender.com';
         const senderName = parsed.from?.value[0]?.name?.trim() || null;
         const subject = parsed.subject || '(No Subject)';
-        const body = parsed.text || '';
+        const body = parsed.text || (parsed.html ? htmlToPlainText(parsed.html) : '');
         const previewText = body.slice(0, 100) + (body.length > 100 ? '...' : '');
         const messageId = parsed.messageId || null;
         const ccAddresses = parsed.cc
@@ -201,7 +236,8 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         const senderLocalPart = senderLower.split('@')[0] || '';
         const isInternalOrAutomated =
           (internalDomain && senderDomain === internalDomain) ||
-          AUTOMATED_SENDER_LOCAL_PARTS.some((p) => senderLocalPart === p || senderLocalPart.startsWith(`${p}-`) || senderLocalPart.startsWith(`${p}.`));
+          AUTOMATED_SENDER_LOCAL_PARTS.some((p) => senderLocalPart === p || senderLocalPart.startsWith(`${p}-`) || senderLocalPart.startsWith(`${p}.`)) ||
+          AUTOMATED_VENDOR_DOMAINS.some((d) => senderDomain === d || senderDomain.endsWith(`.${d}`));
 
         // 2. Integration Connection Time Constraint (Only emails received from now onward after connected)
         // Prefer the IMAP server's own INTERNALDATE (when the message actually
