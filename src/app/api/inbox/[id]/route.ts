@@ -382,10 +382,10 @@ export async function POST(
         // tone-adjusted rewrite. Surface a clear, specific error instead of
         // letting this bubble up as a generic 500.
         console.error('generateToneAdjustedReply failed:', aiError?.status, aiError?.code, aiError?.message);
-        // TEMPORARY: surfacing the raw SDK error detail to diagnose a
-        // production-only failure that isn't reproducible locally with the
-        // same key -- revert to a generic message once root-caused.
-        return NextResponse.json({ error: `AI call failed: status=${aiError?.status} code=${aiError?.code} type=${aiError?.type} message=${aiError?.message}` }, { status: 502 });
+        const reason = aiError?.status === 429 || aiError?.code === 'insufficient_quota'
+          ? 'The AI service has hit its usage limit. Check the OpenAI account\'s billing/rate limits.'
+          : 'The AI service failed to generate a reply. Please try again in a moment.';
+        return NextResponse.json({ error: reason }, { status: 502 });
       }
       const finalBody = wrapResponseWithGreetingAndClosing(rawReply, customerName, greetingText, closingSignature, { orderNumber });
 
