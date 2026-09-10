@@ -135,7 +135,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
       // row (unchanged from before), but don't classify yet -- collect them
       // so every email that needs a fresh AI reply (no template match) can
       // be sent to OpenAI in ONE batched call instead of one call each.
-      const pending: { seq: number; newEmail: Awaited<ReturnType<typeof prisma.email.create>>; senderEmail: string; senderName: string | null; subject: string }[] = [];
+      const pending: { seq: number; newEmail: Awaited<ReturnType<typeof prisma.email.create>>; senderEmail: string; senderName: string | null; subject: string; isInternal: boolean }[] = [];
 
       for (const seq of unseenList) {
         const message = await client.fetchOne(seq, { source: true, uid: true, internalDate: true });
@@ -191,8 +191,11 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         // discarding them (nothing to review if the heuristic is wrong),
         // they're imported tagged businessType 'INTERNAL' -- filtered out of
         // the default B2C/B2B/ALL views, but still visible under their own
-        // "Internal" tab. Skips AI classification entirely below since
-        // there's nothing to classify.
+        // "Internal" tab. They still go through the same classification +
+        // draft pipeline as everything else below (a forwarded customer
+        // message often arrives wrapped in one of these), just with the
+        // 'INTERNAL' tag force-kept afterward and no Customer profile
+        // created for what's an automated/staff sender, not a real contact.
         const senderLower = senderEmail.toLowerCase();
         const senderDomain = senderLower.split('@')[1] || '';
         const senderLocalPart = senderLower.split('@')[0] || '';
@@ -296,13 +299,9 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
           }
 
           if (isInternalOrAutomated) {
-            console.log(`Tagged internal/automated sender ${senderEmail} as INTERNAL: ${subject}`);
-            await client.messageFlagsAdd({ seq }, ['\\Seen']);
-            emailsSynced.push(newEmail);
-            syncedCount++;
-          } else {
-            pending.push({ seq, newEmail, senderEmail, senderName, subject });
+            console.log(`Tagged internal/automated sender ${senderEmail} as INTERNAL, queued for draft generation: ${subject}`);
           }
+          pending.push({ seq, newEmail, senderEmail, senderName, subject, isInternal: isInternalOrAutomated });
         }
       }
 
@@ -323,7 +322,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         // Pass 3: same per-email side effects as before, using each email's
         // corresponding (already-computed) aiResult.
         for (let i = 0; i < pending.length; i++) {
-          const { seq, newEmail, senderEmail, senderName, subject } = pending[i];
+          const { seq, newEmail, senderEmail, senderName, subject, isInternal } = pending[i];
           const aiResult = aiResults[i];
 
           // Spam is never surfaced in the inbox -- discard it outright.
@@ -345,12 +344,21 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             ? (templates.find(t => t.id === aiResult.matchedTemplateId)?.name || 'None')
             : 'None';
 
-          // Group this email under the sender's customer profile.
-          await upsertCustomerForEmail(inbox.organizationId, senderEmail, newEmail.id, senderName);
+          // Group this email under the sender's customer profile -- skipped
+          // for internal/automated senders, which aren't a real contact and
+          // would otherwise clutter the Customers page with notification
+          // addresses like no-reply@... .
+          if (!isInternal) {
+            await upsertCustomerForEmail(inbox.organizationId, senderEmail, newEmail.id, senderName);
+          }
 
           // Duplicate-send prevention: same template already sent to this
-          // sender within the last 24h -> force manual review.
-          const isRecentDuplicate = await checkRecentDuplicateReply(inbox.organizationId, senderEmail, aiResult.matchedTemplateId ?? null);
+          // sender within the last 24h -> force manual review. Not
+          // meaningful for internal/automated senders (they're never
+          // actually replied to via template sends in the first place).
+          const isRecentDuplicate = isInternal
+            ? false
+            : await checkRecentDuplicateReply(inbox.organizationId, senderEmail, aiResult.matchedTemplateId ?? null);
 
           // Update Email details in DB with new logging/matching fields.
           // If confidence is >= 85%, status is UNREAD. Otherwise WAITING (Manual Review Queue)
@@ -363,7 +371,11 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             data: {
               language: aiResult.language,
               category: aiResult.category,
-              businessType: aiResult.businessType,
+              // Internal/automated-sender mail keeps its 'INTERNAL' tag
+              // regardless of what the AI classifier makes of the content --
+              // it's never a real B2B/B2C customer conversation, just a
+              // notification that may or may not need a human to act on it.
+              businessType: isInternal ? 'INTERNAL' : aiResult.businessType,
               sentiment: aiResult.sentiment,
               urgency: aiResult.urgency,
               priority: aiResult.priority,
