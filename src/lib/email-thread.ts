@@ -181,3 +181,50 @@ export function cleanEmailText(rawBody: string): string {
   const turns = splitThread(rawBody);
   return turns.map((t) => t.text).join('\n\n').trim() || (rawBody || '').trim();
 }
+
+// A customer's follow-up reply on an already-answered thread that's just a
+// closing acknowledgment -- "Thanks, that resolved it!", "Perfect, appreciate
+// it", "All set now" -- needs nobody to answer it. Deliberately conservative:
+// a false "this needs no reply" is far worse than a wasted draft, so this
+// only fires on short text, with no question mark, and no sign the customer
+// is continuing the conversation rather than closing it.
+const CLOSING_PHRASE_MARKERS: RegExp[] = [
+  /\bthank(?:s| you)\b/i,
+  /\bappreciate\b/i,
+  /\ball (?:set|good|sorted|fixed)\b/i,
+  /\b(?:issue|problem) (?:is |was )?resolved\b/i,
+  /\bresolved (?:my|the|it)\b/i,
+  /\bsorted( it)? out\b/i,
+  /\bgot it\b/i,
+  /\bperfect\b/i,
+  /\bawesome\b/i,
+  /\bno (?:further|more) questions\b/i,
+  /\bthat('?s| is) all\b/i,
+  /\bmuch appreciated\b/i,
+  /\bsolved (?:my|the) (?:problem|issue)\b/i,
+  /\bfixed (?:my|the) issue\b/i,
+  /\byou'?ve been (?:very |so )?helpful\b/i,
+  /\bworks now\b/i,
+  /\bworking now\b/i,
+];
+
+// Any of these means the message is continuing the conversation, not
+// closing it -- disqualifies a match regardless of closing phrases present.
+const CONTINUATION_MARKERS: RegExp[] = [
+  /\bbut\b/i, /\bhowever\b/i, /\bstill\b/i, /\balso\b/i, /\banother\b/i,
+  /\bone more\b/i, /\badditionally\b/i, /\bwhat about\b/i,
+  /\bcan you also\b/i, /\bcould you also\b/i, /\b(?:also |)i (?:need|want|have)\b/i,
+  /\bone (?:last )?thing\b/i, /\bquick question\b/i,
+];
+
+const MAX_CLOSING_MESSAGE_WORDS = 35;
+
+export function isConversationClosingMessage(text: string): boolean {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return false;
+  if (trimmed.includes('?')) return false;
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+  if (wordCount > MAX_CLOSING_MESSAGE_WORDS) return false;
+  if (CONTINUATION_MARKERS.some((re) => re.test(trimmed))) return false;
+  return CLOSING_PHRASE_MARKERS.some((re) => re.test(trimmed));
+}

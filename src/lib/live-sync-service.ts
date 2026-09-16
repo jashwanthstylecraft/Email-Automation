@@ -3,6 +3,7 @@ import { simpleParser } from 'mailparser';
 import { prisma } from './prisma';
 import { runAIPipelineBatch } from './ai-pipeline';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
+import { cleanEmailText, isConversationClosingMessage } from './email-thread';
 
 // The connected mailbox is now a real, direct-to-customer support inbox
 // (previously a personal Gmail account fed only by two reps forwarding
@@ -284,17 +285,32 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
           // separate item that would otherwise get its own independent
           // AI-drafted reply for what's really the same open conversation.
           let threadMatch: { id: string } | null = null;
+          // A reply that's purely a closing acknowledgment ("Thanks, that
+          // resolved it!") on a thread we already answered needs nobody to
+          // act on it -- carries the prior thread's own businessType
+          // forward, and the id lets the log line below name what it closed.
+          let closingAckFor: { id: string; businessType: string | null } | null = null;
           if (!isInternalOrAutomated) {
-            const openFromSameSender = await prisma.email.findMany({
+            const priorFromSameSender = await prisma.email.findMany({
               where: {
                 organizationId: inbox.organizationId,
                 sender: senderEmail,
-                status: { in: ['UNREAD', 'WAITING'] },
+                status: { in: ['UNREAD', 'WAITING', 'REPLIED'] },
               },
-              select: { id: true, subject: true },
+              select: { id: true, subject: true, status: true, businessType: true },
+              orderBy: { createdAt: 'desc' },
             });
             const normalizedNew = normalizeSubjectForThreading(subject);
-            threadMatch = openFromSameSender.find((c) => normalizeSubjectForThreading(c.subject) === normalizedNew) || null;
+            const sameThread = priorFromSameSender.filter((c) => normalizeSubjectForThreading(c.subject) === normalizedNew);
+            const openMatch = sameThread.find((c) => c.status !== 'REPLIED');
+            threadMatch = openMatch ? { id: openMatch.id } : null;
+
+            if (!threadMatch) {
+              const repliedMatch = sameThread.find((c) => c.status === 'REPLIED');
+              if (repliedMatch && isConversationClosingMessage(cleanEmailText(body))) {
+                closingAckFor = { id: repliedMatch.id, businessType: repliedMatch.businessType };
+              }
+            }
           }
 
           let newEmail;
@@ -325,8 +341,8 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
                 body: body,
                 preview: previewText,
                 attachments: attachmentsJson,
-                status: isInternalOrAutomated ? 'WAITING' : 'UNREAD',
-                businessType: isInternalOrAutomated ? 'INTERNAL' : undefined,
+                status: closingAckFor ? 'RESOLVED' : (isInternalOrAutomated ? 'WAITING' : 'UNREAD'),
+                businessType: closingAckFor ? (closingAckFor.businessType ?? undefined) : (isInternalOrAutomated ? 'INTERNAL' : undefined),
                 gmailCategory: 'primary',
                 organizationId: inbox.organizationId,
                 createdAt: emailDate,
@@ -334,10 +350,20 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             });
           }
 
-          if (isInternalOrAutomated) {
-            console.log(`Tagged internal/automated sender ${senderEmail} as INTERNAL, queued for draft generation: ${subject}`);
+          if (closingAckFor) {
+            // Nothing to classify or draft -- this is a closed conversation,
+            // not a new request.
+            console.log(`Closing acknowledgment from ${senderEmail} on an already-answered thread -- marked Resolved, no draft needed: ${subject}`);
+            await upsertCustomerForEmail(inbox.organizationId, senderEmail, newEmail.id, senderName);
+            await client.messageFlagsAdd({ seq }, ['\\Seen']);
+            emailsSynced.push(newEmail);
+            syncedCount++;
+          } else {
+            if (isInternalOrAutomated) {
+              console.log(`Tagged internal/automated sender ${senderEmail} as INTERNAL, queued for draft generation: ${subject}`);
+            }
+            pending.push({ seq, newEmail, senderEmail, senderName, subject, isInternal: isInternalOrAutomated });
           }
-          pending.push({ seq, newEmail, senderEmail, senderName, subject, isInternal: isInternalOrAutomated });
         }
       }
 

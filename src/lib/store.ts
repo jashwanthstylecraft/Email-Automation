@@ -20,7 +20,7 @@ export interface Email {
   subject: string;
   body: string;
   preview: string;
-  status: 'UNREAD' | 'WAITING' | 'REPLIED' | 'ESCALATED' | 'SPAM';
+  status: 'UNREAD' | 'WAITING' | 'REPLIED' | 'ESCALATED' | 'SPAM' | 'RESOLVED';
   isRead: boolean;
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
   sentiment: 'POSITIVE' | 'NEUTRAL' | 'NEGATIVE' | 'ANGRY';

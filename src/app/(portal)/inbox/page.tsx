@@ -518,6 +518,7 @@ export default function InboxPage() {
     { label: 'All', value: 'ALL', icon: Mail },
     { label: 'Drafts', value: 'DRAFTS', icon: FileEdit },
     { label: 'Sent', value: 'REPLIED', icon: CheckCheck },
+    { label: 'Resolved', value: 'RESOLVED', icon: PartyPopper },
     { label: 'Manual Review', value: 'WAITING', icon: ShieldQuestion },
     { label: 'Deleted / Archived', value: 'ESCALATED', icon: Archive },
   ];
@@ -981,6 +982,14 @@ export default function InboxPage() {
                       </span>
                     );
                   })()}
+                  {email.status === 'RESOLVED' && (
+                    <span
+                      className="flex items-center gap-1 px-2 py-0.5 rounded bg-success-bg border border-success/25 text-[9px] uppercase tracking-wider font-mono font-bold text-success"
+                      title="The customer's own reply closed this out (a thanks/all-set message) -- nobody needs to respond"
+                    >
+                      <PartyPopper className="w-3 h-3" /> Resolved
+                    </span>
+                  )}
                   {!!email.attachmentCount && (
                     <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface-2 border border-border text-[9px] text-text-secondary font-mono" title={`${email.attachmentCount} attachment${email.attachmentCount === 1 ? '' : 's'}`}>
                       <Paperclip className="w-2.5 h-2.5" /> {email.attachmentCount}
@@ -1122,7 +1131,8 @@ export default function InboxPage() {
                   <div>
                     <span className="text-text-muted uppercase font-semibold">Status Flag:</span>
                     <p className="text-accent-text font-bold mt-1 uppercase">
-                      {selectedEmail.status === 'REPLIED' ? 'Sent' :
+                      {selectedEmail.status === 'RESOLVED' ? 'Resolved' :
+                       selectedEmail.status === 'REPLIED' ? 'Sent' :
                        selectedEmail.status === 'UNREAD' && selectedEmail.aiConfidence >= 0.85 ? 'Draft' :
                        selectedEmail.aiConfidence >= 0.60 ? 'Needs Review' : 'Manual Review'}
                     </p>
