@@ -45,6 +45,9 @@ const AUTOMATED_SENDER_LOCAL_PARTS = [
 const AUTOMATED_VENDOR_DOMAINS = [
   'fedex.com', // FedEx Billing Online invoice notices
   'gwmail1.ebizcharge.com', // EBizCharge daily decline reports
+  'email-marriott.com', // Marriott Bonvoy marketing/lifecycle emails
+  'ccsend.com', // Constant Contact's bulk-send domain -- matches any org using it, not just one sender
+  'email.apple.com', // Apple TestFlight/App Store notifications
 ];
 
 // Attachments (images/PDFs/docs) are stored inline as base64 data URIs --

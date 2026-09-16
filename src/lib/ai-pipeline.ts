@@ -59,7 +59,21 @@ async function isB2BSender(sender: string, organizationId: string): Promise<bool
 // before this is ever reached, so this prompt only has one job: draft a
 // brief reply for the remaining case (nothing in the template library
 // matched).
-const ANALYSIS_SYSTEM_PROMPT = "You are a professional email assistant. Based on this email subject and message, write a short, professional reply in max 3 sentences.";
+//
+// This is also the ONLY point in the whole pipeline that had no idea what
+// business it was even replying for or any way to decline -- a marketing
+// newsletter, a third-party notification, or anything else clearly not a
+// StyleCraft support request still got "write a reply" as an unconditional
+// instruction, so the model dutifully fabricated a plausible-sounding
+// customer voice out of whatever fragment of newsletter HTML it was given
+// (e.g. hallucinating a reply FROM a customer THANKING a hotel loyalty
+// program for its welcome email, because that email had landed in this
+// inbox and there was nothing else to work with). The sentinel below gives
+// it an explicit way to say "there's nothing here to reply to" instead.
+const NO_REPLY_SENTINEL = 'NO_REPLY_NEEDED';
+const ANALYSIS_SYSTEM_PROMPT = `You are a customer support email assistant for StyleCraft US, a hair clipper/trimmer and grooming tools brand. Based on this email's subject and message, write a short, professional reply in max 3 sentences, as StyleCraft support responding to a customer.
+
+If the email is clearly NOT a genuine support request directed at StyleCraft -- e.g. it's a marketing/promotional email, a newsletter, an automated notification or receipt from an unrelated company, spam, or content with nothing for a support agent to actually respond to -- do not invent a reply. Respond with exactly this text and nothing else: ${NO_REPLY_SENTINEL}`;
 
 /**
  * Checks if this email is a duplicate of a recent email from the same sender.
@@ -735,11 +749,28 @@ function matchedToResult(c: ClassifiedEmail): AIPipelineResult {
 }
 
 function finalizeUnmatchedResult(c: ClassifiedEmail, replyText: string, aiProvider: string): AIPipelineResult {
-  const draftReply = wrapResponseWithGreetingAndClosing(replyText, c.customerName, c.greeting, c.closing, { orderNumber: c.orderNumber });
+  // The model said there's nothing here to genuinely reply to (marketing
+  // mail, an unrelated company's notification, etc.) -- leave it with no
+  // draft at all (an empty string is what live-sync-service.ts's
+  // `hasDraft` check treats as "don't create an AutoReply row") rather than
+  // force a fabricated customer-voice reply into existence. Still lands in
+  // the normal WAITING/manual-review queue via the low confidence below, so
+  // nothing is silently lost -- an agent just sees no ready-made draft.
+  // startsWith rather than an exact match -- models sometimes tack on
+  // trailing punctuation or a short aside even when told to respond with
+  // exactly this text, and a real reply is never going to open with this
+  // exact all-caps token.
+  const isNoReplyNeeded = replyText.trim().toUpperCase().startsWith(NO_REPLY_SENTINEL);
+  const draftReply = isNoReplyNeeded
+    ? ''
+    : wrapResponseWithGreetingAndClosing(replyText, c.customerName, c.greeting, c.closing, { orderNumber: c.orderNumber });
   return {
     language: c.language, category: c.category, businessType: c.businessType, sentiment: c.sentiment, urgency: c.urgency, priority: c.priority,
-    aiConfidence: 0.5, spam: c.spam, duplicate: c.duplicate, draftReply,
-    summary: `Customer inquiry regarding: ${c.subject}`, matchedTemplateId: null, aiProvider,
+    aiConfidence: isNoReplyNeeded ? 0 : 0.5, spam: c.spam, duplicate: c.duplicate, draftReply,
+    summary: isNoReplyNeeded
+      ? 'Not a genuine support request for StyleCraft (marketing/unrelated/third-party notification) -- no draft generated, flagged for manual review.'
+      : `Customer inquiry regarding: ${c.subject}`,
+    matchedTemplateId: null, aiProvider,
   };
 }
 
