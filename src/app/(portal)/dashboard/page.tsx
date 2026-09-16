@@ -14,7 +14,12 @@ import {
 } from '@/components/dashboard-charts';
 import { BentoSection, BentoCard, DEFAULT_GLOW_COLOR } from '@/components/MagicBento';
 
-const POLL_INTERVAL_MS = 15000;
+// /api/dashboard runs several dozen separate aggregate queries per call
+// (per-category counts, groupBys, a 7-day loop, audit-log scans) -- polling
+// it every 15s was the single largest source of Vercel/Neon load in the app,
+// for a page where a minute or two of staleness on business metrics is
+// completely fine.
+const POLL_INTERVAL_MS = 90000;
 
 export default function DashboardPage() {
   const router = useRouter();

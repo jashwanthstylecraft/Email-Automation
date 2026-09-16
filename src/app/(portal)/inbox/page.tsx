@@ -182,28 +182,38 @@ export default function InboxPage() {
   }, [activeFilter, search, activeCategory, activeBusinessType, dateFrom, dateTo]);
 
   // Keep the inbox genuinely live: actively poll the real mailbox (not just
-  // re-read our own DB) every 30s, so new mail shows up without waiting on
-  // Vercel's once-a-day cron or someone clicking "Sync Inbox" by hand.
-  // syncInbox() hits IMAP, pulls in anything new, then internally calls
-  // fetchEmails() which reuses the last explicit filters -- so the current
-  // tab/search/category view is preserved automatically. Skipped while
-  // actively editing/composing a reply -- fetchEmails() returns fresh
-  // object references for every email, and the effect below that resets
-  // replyText/isEditingDraft depends on the whole selectedEmail object, so
-  // polling during an in-progress edit would silently wipe out unsaved
-  // changes.
+  // re-read our own DB), so new mail shows up without waiting on the
+  // GitHub Actions cron or someone clicking "Sync Inbox" by hand.
+  // syncInbox() hits real IMAP, pulls in anything new, then internally
+  // re-fetches both the email list AND the full dashboard aggregate bundle
+  // (several dozen queries) -- easily the single heaviest recurring cost in
+  // the app, so this only runs while the tab is actually visible, and at a
+  // much less aggressive cadence than a support reply genuinely needs.
+  // Skipped while actively editing/composing a reply -- fetchEmails()
+  // returns fresh object references for every email, and the effect below
+  // that resets replyText/isEditingDraft depends on the whole selectedEmail
+  // object, so polling during an in-progress edit would silently wipe out
+  // unsaved changes.
   const pollGuardRef = useRef({ isEditingDraft, isCustomMode });
   useEffect(() => {
     pollGuardRef.current = { isEditingDraft, isCustomMode };
   }, [isEditingDraft, isCustomMode]);
 
   useEffect(() => {
-    const interval = setInterval(() => {
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return;
       const g = pollGuardRef.current;
       if (g.isEditingDraft || g.isCustomMode) return;
       syncInbox();
-    }, 30000);
-    return () => clearInterval(interval);
+    };
+    const interval = setInterval(tick, 120000);
+    // Catch up immediately on returning to the tab, rather than waiting for
+    // the next tick, so switching back never feels stale.
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, []);
 
   // Category counts for the Category filter (independent of the current
