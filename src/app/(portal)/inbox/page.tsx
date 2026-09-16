@@ -669,7 +669,7 @@ export default function InboxPage() {
           third dedicated vertical-tab column here; it's now a Category
           dropdown filter inside the Inbox Queue itself, freeing that width
           for the actual email list. */}
-      <div className={isQueueCollapsed ? 'w-12 flex-shrink-0 flex' : 'w-1/2 flex-shrink-0 flex gap-2 min-w-0'}>
+      <div className={isQueueCollapsed ? 'w-12 flex-shrink-0 flex' : 'w-2/5 flex-shrink-0 flex gap-2 min-w-0'}>
       {isQueueCollapsed ? (
         <button
           onClick={() => setIsQueueCollapsed(false)}
@@ -1040,7 +1040,7 @@ export default function InboxPage() {
 
       {/* Right half of the page: email contents and drafting workstation (mail editor) --
           expands to fill the freed width when the Inbox Queue is collapsed. */}
-      <div className={isQueueCollapsed ? 'flex-1 min-w-0 flex flex-col justify-between glass-panel rounded-xl border border-border bg-bg overflow-y-auto' : 'w-1/2 flex-shrink-0 flex flex-col justify-between glass-panel rounded-xl border border-border bg-bg overflow-y-auto'}>
+      <div className="flex-1 min-w-0 flex flex-col justify-between glass-panel rounded-xl border border-border bg-bg overflow-y-auto">
         {!selectedEmail ? (
           <div className="flex-1 flex flex-col items-center justify-center text-text-muted">
             <Mail className="w-12 h-12 text-text-muted mb-2 animate-pulse" />
