@@ -33,6 +33,7 @@ export default function InboxPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [activeFilter, setActiveFilter] = useState(searchParams.get('status') || 'INBOX');
   const [isMailboxCollapsed, setIsMailboxCollapsed] = useState(false);
+  const [isQueueCollapsed, setIsQueueCollapsed] = useState(false);
   const [activeCategory, setActiveCategory] = useState('ALL');
   const [activeBusinessType, setActiveBusinessType] = useState('ALL');
   const [dateRangePreset, setDateRangePreset] = useState('ALL');
@@ -667,7 +668,18 @@ export default function InboxPage() {
           third dedicated vertical-tab column here; it's now a Category
           dropdown filter inside the Inbox Queue itself, freeing that width
           for the actual email list. */}
-      <div className="w-1/2 flex-shrink-0 flex gap-2 min-w-0">
+      <div className={isQueueCollapsed ? 'w-12 flex-shrink-0 flex' : 'w-1/2 flex-shrink-0 flex gap-2 min-w-0'}>
+      {isQueueCollapsed ? (
+        <button
+          onClick={() => setIsQueueCollapsed(false)}
+          title="Expand Inbox Queue"
+          className="w-full flex flex-col items-center justify-center gap-2 py-4 glass-panel rounded-xl border border-border bg-bg text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+        >
+          <ChevronRight className="w-4 h-4 flex-shrink-0" />
+          <span className="text-[9px] uppercase tracking-wider font-semibold [writing-mode:vertical-rl] rotate-180">Inbox Queue</span>
+        </button>
+      ) : (
+      <>
       {/* Mailbox folders -- collapsible to a narrow icon-only strip so it
           doesn't eat width from the actual email list when not needed. */}
       <div className={`${isMailboxCollapsed ? 'w-10' : 'w-24'} flex-shrink-0 flex flex-col glass-panel rounded-xl overflow-hidden border border-border bg-bg transition-all`}>
@@ -729,6 +741,13 @@ export default function InboxPage() {
             </h3>
             <p className="text-[9px] text-text-muted mt-0.5">Last synced: <span className="text-accent-text font-medium font-mono">{lastSyncedAt}</span></p>
           </div>
+          <button
+            onClick={() => setIsQueueCollapsed(true)}
+            title="Collapse Inbox Queue for a wider message/draft view"
+            className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-3 cursor-pointer flex-shrink-0"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={handleSyncInbox}
             disabled={isLoading}
@@ -1006,10 +1025,13 @@ export default function InboxPage() {
           )}
         </div>
       </div>
+      </>
+      )}
       </div>
 
-      {/* Right half of the page: email contents and drafting workstation (mail editor) */}
-      <div className="w-1/2 flex-shrink-0 flex flex-col justify-between glass-panel rounded-xl border border-border bg-bg overflow-y-auto">
+      {/* Right half of the page: email contents and drafting workstation (mail editor) --
+          expands to fill the freed width when the Inbox Queue is collapsed. */}
+      <div className={isQueueCollapsed ? 'flex-1 min-w-0 flex flex-col justify-between glass-panel rounded-xl border border-border bg-bg overflow-y-auto' : 'w-1/2 flex-shrink-0 flex flex-col justify-between glass-panel rounded-xl border border-border bg-bg overflow-y-auto'}>
         {!selectedEmail ? (
           <div className="flex-1 flex flex-col items-center justify-center text-text-muted">
             <Mail className="w-12 h-12 text-text-muted mb-2 animate-pulse" />
