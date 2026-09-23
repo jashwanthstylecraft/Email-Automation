@@ -187,12 +187,26 @@ export function splitThread(rawBody: string): ThreadMessage[] {
 }
 
 // Single-block equivalent for anything that just wants "the real text,
-// noise gone" (keyword matching, AI classification, order-number
-// extraction) without needing the turn-by-turn structure -- every turn
-// found by splitThread, back in chronological reading order.
+// noise gone" (order-number/customer-name extraction, which benefits from
+// seeing the whole conversation even if only the latest message mentions a
+// name) without needing the turn-by-turn structure -- every turn found by
+// splitThread, back in chronological reading order.
 export function cleanEmailText(rawBody: string): string {
   const turns = splitThread(rawBody);
   return turns.map((t) => t.text).join('\n\n').trim() || (rawBody || '').trim();
+}
+
+// Only the newest turn's cleaned text -- what classification, template
+// matching, and drafting should actually respond to. A reply thread's raw
+// body is the whole conversation glued together; without this, the 100-word
+// budget handed to the AI (and the keyword matcher's input) was being
+// consumed by the OLDEST message first (splitThread returns oldest-first),
+// so a long-running thread could mean the customer's actual latest question
+// never even reached the model -- it kept re-answering (or re-matching a
+// template for) whatever was asked several messages ago.
+export function latestMessageText(rawBody: string): string {
+  const turns = splitThread(rawBody);
+  return turns.length > 0 ? turns[turns.length - 1].text : (rawBody || '').trim();
 }
 
 // A customer's follow-up reply on an already-answered thread that's just a

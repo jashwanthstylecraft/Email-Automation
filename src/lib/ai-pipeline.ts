@@ -2,7 +2,8 @@ import crypto from 'crypto';
 import { prisma } from './prisma';
 import { parseKeywords, matchTemplates, TemplateForScoring, MatchResult } from './keyword-engine';
 import { openai, OPENAI_MODEL, OPENAI_MAX_TOKENS, OPENAI_TEMPERATURE } from './openai-client';
-import { cleanEmailText } from './email-thread';
+import { cleanEmailText, latestMessageText } from './email-thread';
+import { searchKnowledgeBase } from './rag-service';
 
 export interface AIPipelineResult {
   language: string;
@@ -456,18 +457,40 @@ function stripAIOwnFraming(text: string): string {
   return result || original;
 }
 
+// searchKnowledgeBase (src/lib/rag-service.ts) was built and never actually
+// wired into a live drafting call anywhere -- a general question that
+// matched no template got a generic reply with nothing from the org's own
+// uploaded reference docs, even when those docs directly answered it. Pulls
+// the top matching chunks for one query and formats them as a labeled
+// reference block the model is told to draw from but not copy verbatim.
+// Failure here (a bad/slow KB search) must never block drafting a reply at
+// all -- falls back to no reference context, same as before this existed.
+async function buildKnowledgeContext(query: string, organizationId: string): Promise<string> {
+  try {
+    const results = await searchKnowledgeBase(query, organizationId, 3);
+    if (results.length === 0) return '';
+    const blocks = results.map((r, i) => `[${i + 1}] From "${r.documentTitle}":\n${r.chunk}`).join('\n\n');
+    return `\n\nReference material from the company's own knowledge base -- use it to answer accurately and specifically where it's actually relevant, but don't quote it verbatim or mention "the knowledge base" to the customer:\n${blocks}`;
+  } catch (error) {
+    console.error('Knowledge base search failed (continuing without it):', error);
+    return '';
+  }
+}
+
 /**
  * Single OpenAI call for one email that matched no template -- minimal
- * context (subject + first 100 words), short output (max_tokens capped),
- * using the one shared client from src/lib/openai-client.ts.
+ * context (subject + first 100 words) plus whatever the org's own
+ * knowledge base has on the topic, short output (max_tokens capped), using
+ * the one shared client from src/lib/openai-client.ts.
  */
-export async function generateReplyWithAI(subject: string, briefBody: string): Promise<string> {
+export async function generateReplyWithAI(subject: string, briefBody: string, organizationId: string): Promise<string> {
+  const knowledgeContext = await buildKnowledgeContext(`${subject} ${briefBody}`, organizationId);
   const completion = await openai.chat.completions.create({
     model: OPENAI_MODEL,
     max_tokens: OPENAI_MAX_TOKENS,
     temperature: OPENAI_TEMPERATURE,
     messages: [
-      { role: 'system', content: ANALYSIS_SYSTEM_PROMPT },
+      { role: 'system', content: ANALYSIS_SYSTEM_PROMPT + knowledgeContext },
       { role: 'user', content: `Subject: ${subject}\nMessage: ${briefBody}` },
     ],
   });
@@ -487,8 +510,14 @@ export async function generateReplyWithAI(subject: string, briefBody: string): P
 // keeps each request's token budget honest for its own size.
 const BATCH_CHUNK_SIZE = 8;
 
-async function generateRepliesChunk(items: { subject: string; briefBody: string }[]): Promise<string[]> {
-  const numberedList = items.map((it, i) => `${i + 1}. Subject: ${it.subject}\nMessage: ${it.briefBody}`).join('\n\n');
+async function generateRepliesChunk(items: { subject: string; briefBody: string }[], organizationId: string): Promise<string[]> {
+  // One KB lookup per item, not one shared lookup for the whole chunk --
+  // a chunk mixes unrelated topics (routine given a sync batch), so a
+  // single combined query would dilute relevance for all of them.
+  const knowledgeContexts = await Promise.all(items.map((it) => buildKnowledgeContext(`${it.subject} ${it.briefBody}`, organizationId)));
+  const numberedList = items
+    .map((it, i) => `${i + 1}. Subject: ${it.subject}\nMessage: ${it.briefBody}${knowledgeContexts[i] ? `\n(Reference for this email only:${knowledgeContexts[i]})` : ''}`)
+    .join('\n\n');
   const completion = await openai.chat.completions.create({
     model: OPENAI_MODEL,
     max_tokens: OPENAI_MAX_TOKENS * items.length,
@@ -497,7 +526,7 @@ async function generateRepliesChunk(items: { subject: string; briefBody: string 
     messages: [
       {
         role: 'system',
-        content: `${ANALYSIS_SYSTEM_PROMPT} You will receive multiple emails, each numbered. Return ONLY a JSON object of the shape {"replies": ["...", "...", ...]} with exactly one short reply per email, in the same order as the input. Do not include markdown formatting.`,
+        content: `${ANALYSIS_SYSTEM_PROMPT} You will receive multiple emails, each numbered, some with their own labeled reference material. Return ONLY a JSON object of the shape {"replies": ["...", "...", ...]} with exactly one short reply per email, in the same order as the input. Do not include markdown formatting.`,
       },
       { role: 'user', content: numberedList },
     ],
@@ -521,22 +550,22 @@ async function generateRepliesChunk(items: { subject: string; briefBody: string 
  * doesn't waste the replies already generated by earlier chunks -- it falls
  * back to the single-email path for just that chunk's items.
  */
-export async function generateRepliesBatch(items: { subject: string; briefBody: string }[]): Promise<string[]> {
+export async function generateRepliesBatch(items: { subject: string; briefBody: string }[], organizationId: string): Promise<string[]> {
   if (items.length === 0) return [];
   if (items.length === 1) {
-    return [await generateReplyWithAI(items[0].subject, items[0].briefBody)];
+    return [await generateReplyWithAI(items[0].subject, items[0].briefBody, organizationId)];
   }
 
   const results: string[] = [];
   for (let i = 0; i < items.length; i += BATCH_CHUNK_SIZE) {
     const chunk = items.slice(i, i + BATCH_CHUNK_SIZE);
     try {
-      results.push(...await generateRepliesChunk(chunk));
+      results.push(...await generateRepliesChunk(chunk, organizationId));
     } catch (error) {
       console.error(`Chunked OpenAI reply generation failed for items ${i}-${i + chunk.length - 1}, falling back to single-email calls for this chunk:`, error);
       for (const it of chunk) {
         try {
-          results.push(await generateReplyWithAI(it.subject, it.briefBody));
+          results.push(await generateReplyWithAI(it.subject, it.briefBody, organizationId));
         } catch (singleError) {
           console.error('Single-email fallback also failed:', singleError);
           results.push(FALLBACK_RESPONSE);
@@ -665,7 +694,13 @@ async function classifyEmail(
   parsedSenderName?: string | null
 ): Promise<ClassifiedEmail> {
   const cleanBody = stripEmailBoilerplate(body);
-  const normalizedText = (subject + ' ' + cleanBody).toLowerCase();
+  // What the customer is actually asking RIGHT NOW -- classification,
+  // template matching, and the AI draft all key off this, not the whole
+  // thread (see latestMessageText's own comment). Order number / customer
+  // name extraction still use the full cleanBody below, since those
+  // benefit from context a short "any update?" follow-up wouldn't repeat.
+  const latestText = latestMessageText(body);
+  const normalizedText = (subject + ' ' + latestText).toLowerCase();
 
   // 1. Language Detection
   let language = 'en';
@@ -709,7 +744,7 @@ async function classifyEmail(
   // 4. Sentiment Analysis
   let sentiment = 'NEUTRAL';
   const isAngryText = normalizedText.includes('sucks') || normalizedText.includes('terrible') || normalizedText.includes('broken') || normalizedText.includes('unacceptable') || normalizedText.includes('useless') || normalizedText.includes('fix this') || normalizedText.includes('immediately');
-  const isAllCaps = cleanBody.length > 10 && cleanBody === cleanBody.toUpperCase();
+  const isAllCaps = latestText.length > 10 && latestText === latestText.toUpperCase();
 
   if (isAngryText || isAllCaps) {
     sentiment = 'ANGRY';
@@ -746,11 +781,11 @@ async function classifyEmail(
   const greeting = settings?.greeting || 'Hello';
   const closing = settings?.closing || 'Regards,\nStyleCraft US Support Team';
 
-  // Template match -- before anything touches the API. Uses cleanBody so a
-  // forwarding rep's own signature (brand name, phone number, awards) can
-  // never contribute keyword-match signal regardless of what the actual
-  // customer wrote.
-  const keywordMatch = await runKeywordMatcher(cleanBody, subject, organizationId);
+  // Template match -- before anything touches the API. Uses latestText, not
+  // the whole thread -- matching against an earlier (possibly already
+  // resolved) message's keywords picked the wrong template entirely for a
+  // customer whose latest message had moved on to something else.
+  const keywordMatch = await runKeywordMatcher(latestText, subject, organizationId);
   let matched: ClassifiedEmail['matched'] = null;
   if (keywordMatch.matchedTemplateId) {
     const template = await prisma.template.findUnique({ where: { id: keywordMatch.matchedTemplateId } });
@@ -769,7 +804,7 @@ async function classifyEmail(
   return {
     language, category, businessType, sentiment, urgency, priority, spam, duplicate,
     customerName, orderNumber, greeting, closing, subject,
-    briefBody: first100Words(cleanBody), matched,
+    briefBody: first100Words(latestText), matched,
   };
 }
 
@@ -836,7 +871,7 @@ export async function runAIPipeline(
       aiProvider = 'OpenAI (cached)';
     } else {
       try {
-        replyText = await generateReplyWithAI(subject, c.briefBody);
+        replyText = await generateReplyWithAI(subject, c.briefBody, organizationId);
         await saveCachedReply(organizationId, contentHash, replyText);
         aiProvider = `OpenAI (${OPENAI_MODEL})`;
       } catch (error) {
@@ -887,7 +922,7 @@ export async function runAIPipelineBatch(
   let freshReplies: string[] = [];
   if (stillNeeded.length > 0) {
     try {
-      freshReplies = await generateRepliesBatch(stillNeeded.map(i => ({ subject: classified[i].subject, briefBody: classified[i].briefBody })));
+      freshReplies = await generateRepliesBatch(stillNeeded.map(i => ({ subject: classified[i].subject, briefBody: classified[i].briefBody })), organizationId);
       await Promise.all(stillNeeded.map((i, k) =>
         saveCachedReply(organizationId, hashEmailContent(classified[i].subject, classified[i].briefBody), freshReplies[k])
       ));
