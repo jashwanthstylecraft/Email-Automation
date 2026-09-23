@@ -101,6 +101,122 @@ function extractAttachments(parsed: { attachments?: { filename?: string; content
 }
 
 
+// How far back to look in the mailbox's own Sent folder on every sync pass
+// for a reply an agent sent directly (Gmail's web UI, phone app, etc.)
+// instead of through this app's Approve/Send workflow. Short on purpose --
+// this only needs to catch replies since the LAST sync (a few minutes ago
+// at most, given the poll cadence), not rescan the whole history every
+// time. The real bound on cost/duplicates isn't this window, it's that a
+// sent message only ever matches an email that's still OPEN (see below) --
+// once matched, that email flips to REPLIED and drops out of the candidate
+// set, so seeing the same sent message again on a later pass is a no-op.
+const EXTERNAL_REPLY_LOOKBACK_DAYS = 3;
+
+/**
+ * A shared mailbox means an agent can just reply from Gmail directly
+ * instead of using this app -- which this app would otherwise never learn
+ * about, leaving that email sitting in the queue looking unanswered
+ * forever (and risking a second agent drafting/sending a duplicate reply
+ * to something that's already been handled). Scans the mailbox's own Sent
+ * folder for recent messages and matches each one, by recipient + subject,
+ * against this org's still-open emails -- a match means someone already
+ * replied outside the app, so it's marked REPLIED here too, with the sent
+ * text recorded as a SENT AutoReply for the same "what actually went out"
+ * history a normal in-app send gets. Runs on the same already-connected
+ * IMAP client as the inbox sync, using its own separate mailbox lock.
+ */
+async function detectExternallySentReplies(client: ImapFlow, organizationId: string): Promise<number> {
+  let detectedCount = 0;
+
+  const mailboxes = await client.list();
+  const sentFolder = mailboxes.find((m) => m.specialUse === '\\Sent') || mailboxes.find((m) => /sent/i.test(m.name));
+  if (!sentFolder) {
+    console.log('No Sent folder found on this mailbox -- skipping external-reply detection.');
+    return 0;
+  }
+
+  const lock = await client.getMailboxLock(sentFolder.path);
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - EXTERNAL_REPLY_LOOKBACK_DAYS);
+    const sentUids = await client.search({ since });
+    if (!sentUids || !Array.isArray(sentUids) || sentUids.length === 0) return 0;
+
+    // Only the org's currently-open emails are even candidates for a match
+    // -- fetched once, not per sent message, since a sync pass can see
+    // hundreds of sent messages (most of them automated system traffic on
+    // this mailbox, not agent replies) against a much smaller open set.
+    const openEmails = await prisma.email.findMany({
+      where: { organizationId, status: { in: ['UNREAD', 'WAITING'] } },
+      select: { id: true, sender: true, subject: true },
+    });
+    if (openEmails.length === 0) return 0;
+    const openBySender = new Map<string, typeof openEmails>();
+    for (const e of openEmails) {
+      const key = e.sender.toLowerCase();
+      if (!openBySender.has(key)) openBySender.set(key, []);
+      openBySender.get(key)!.push(e);
+    }
+
+    for (const uid of sentUids) {
+      const msg = await client.fetchOne(uid, { source: true, internalDate: true });
+      if (!msg || !msg.source) continue;
+      const parsed = await simpleParser(msg.source);
+      const toObject = Array.isArray(parsed.to) ? parsed.to[0] : parsed.to;
+      const toAddress = toObject?.value?.[0]?.address?.toLowerCase().trim();
+      if (!toAddress) continue;
+
+      const candidates = openBySender.get(toAddress);
+      if (!candidates || candidates.length === 0) continue;
+
+      const normalizedSentSubject = normalizeSubjectForThreading(parsed.subject || '');
+      const match = candidates.find((c) => normalizeSubjectForThreading(c.subject) === normalizedSentSubject);
+      if (!match) continue;
+
+      const sentBody = parsed.text || '(no plain-text body captured)';
+      await prisma.email.update({
+        where: { id: match.id },
+        data: {
+          status: 'REPLIED',
+          lastActionAt: msg.internalDate || new Date(),
+          summary: 'Replied outside the app (detected from the mailbox\'s own Sent folder).',
+        },
+      });
+      await prisma.autoReply.create({
+        data: {
+          emailId: match.id,
+          status: 'SENT',
+          responseBody: sentBody,
+          originalDraftBody: sentBody,
+          sentAt: msg.internalDate || new Date(),
+          // Identifies WHAT happened (sent outside the app) honestly --
+          // a shared mailbox's own Sent folder carries no signal for WHICH
+          // specific person actually wrote it, so this deliberately doesn't
+          // guess a name.
+          approvedBy: 'External (sent outside the app)',
+        },
+      });
+      await prisma.auditLog.create({
+        data: {
+          action: 'EXTERNAL_REPLY_DETECTED',
+          entityType: 'email',
+          entityId: match.id,
+          details: `Detected a reply to ${toAddress} sent directly through the mailbox (not through this app) -- marked Replied so it won't be drafted again.`,
+        },
+      });
+      // Remove from the candidate pool -- a second sent message to the same
+      // recipient in this same pass shouldn't match the same (now-closed)
+      // email again.
+      openBySender.set(toAddress, candidates.filter((c) => c.id !== match.id));
+      detectedCount++;
+    }
+  } finally {
+    lock.release();
+  }
+
+  return detectedCount;
+}
+
 /**
  * Connects to the live IMAP server using environment configurations,
  * fetches all unseen emails, and processes them through the StyleCraft AI engine.
@@ -494,11 +610,25 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
     }
   } finally {
     lock.release();
+  }
+
+  // Runs after the INBOX lock is released (imapflow holds one mailbox lock
+  // at a time on a connection) but on the same connection, so this doesn't
+  // cost a second IMAP login. Failure here is never allowed to break the
+  // inbox sync that already succeeded above -- worst case, an external
+  // reply just isn't detected until the next pass.
+  let externallyRepliedCount = 0;
+  try {
+    externallyRepliedCount = await detectExternallySentReplies(client, inbox.organizationId);
+  } catch (error) {
+    console.error('Detecting externally-sent replies failed (non-fatal):', error);
+  } finally {
     await client.logout();
   }
 
   return {
     syncedCount,
     emails: emailsSynced,
+    externallyRepliedCount,
   };
 }
