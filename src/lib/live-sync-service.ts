@@ -3,7 +3,7 @@ import { simpleParser } from 'mailparser';
 import { prisma } from './prisma';
 import { runAIPipelineBatch } from './ai-pipeline';
 import { upsertCustomerForEmail, checkRecentDuplicateReply } from './customer-service';
-import { cleanEmailText, isConversationClosingMessage } from './email-thread';
+import { cleanEmailText, isConversationClosingMessage, normalizeSubjectForThreading } from './email-thread';
 
 // The connected mailbox is now a real, direct-to-customer support inbox
 // (previously a personal Gmail account fed only by two reps forwarding
@@ -100,17 +100,6 @@ function extractAttachments(parsed: { attachments?: { filename?: string; content
   }));
 }
 
-// Strips a leading "Re:"/"Fwd:"/"Fw:" (repeated, case-insensitive) so
-// "Order #123", "Re: Order #123", and "Re: Re: Fwd: Order #123" all
-// compare equal -- used to detect a message that's really a continuation
-// of an already-open thread rather than a brand new conversation.
-function normalizeSubjectForThreading(subject: string): string {
-  let s = subject.trim();
-  while (/^(re|fwd|fw)\s*:\s*/i.test(s)) {
-    s = s.replace(/^(re|fwd|fw)\s*:\s*/i, '').trim();
-  }
-  return s.toLowerCase();
-}
 
 /**
  * Connects to the live IMAP server using environment configurations,

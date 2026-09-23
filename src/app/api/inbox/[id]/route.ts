@@ -10,6 +10,7 @@ import {
   wrapResponseWithGreetingAndClosing, getRecentEditFeedbackExamples, generateToneAdjustedReply,
   stripEmailBoilerplate, parseTemplateImages, renderImagePlaceholders,
 } from '@/lib/ai-pipeline';
+import { normalizeSubjectForThreading } from '@/lib/email-thread';
 
 // Actions that only the assigned agent (or an Admin) may perform -- everyone
 // else viewing an assigned email is read-only. SUBMIT_FEEDBACK is included
@@ -188,20 +189,60 @@ export async function GET(
       lockOwnerName = owner?.name || owner?.email || null;
     }
 
-    // Thread/customer context: previous emails from the same sender, most recent first.
-    const threadContext = await prisma.email.findMany({
+    // Every email from this sender, most recent first -- split below into
+    // (a) the Gmail-style thread this email actually belongs to (same
+    // subject once Re:/Fwd: is stripped) and (b) other, genuinely separate
+    // conversations with the same sender, kept as lightweight jump-to links
+    // like before.
+    const fromSameSender = await prisma.email.findMany({
       where: {
         organizationId: email.organizationId,
         sender: email.sender,
         id: { not: email.id },
       },
       orderBy: { createdAt: 'desc' },
-      take: 5,
-      select: { id: true, subject: true, status: true, matchedTemplateId: true, createdAt: true },
+      take: 100,
+      include: {
+        autoReplies: {
+          where: { status: 'SENT' },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, responseBody: true, sentAt: true, approvedBy: true },
+        },
+      },
     });
+
+    const normalizedCurrent = normalizeSubjectForThreading(email.subject);
+    const sameThread = fromSameSender.filter((e) => normalizeSubjectForThreading(e.subject) === normalizedCurrent);
+    const otherConversations = fromSameSender.filter((e) => normalizeSubjectForThreading(e.subject) !== normalizedCurrent);
+
+    // Gmail-style thread: every prior message in this exact conversation,
+    // oldest first, each carrying whatever reply we actually sent for it --
+    // plus the currently-open email itself as the final (always-expanded)
+    // entry, so the frontend can render the whole back-and-forth from one
+    // array without special-casing "the current one."
+    const thread = [
+      ...sameThread
+        .slice()
+        .reverse()
+        .map((e) => ({
+          id: e.id, sender: e.sender, subject: e.subject, body: e.body, createdAt: e.createdAt,
+          status: e.status, isRead: e.isRead,
+          sentReplies: e.autoReplies.map((r) => ({ id: r.id, responseBody: r.responseBody, sentAt: r.sentAt, approvedBy: r.approvedBy })),
+        })),
+      {
+        id: email.id, sender: email.sender, subject: email.subject, body: email.body, createdAt: email.createdAt,
+        status: email.status, isRead: email.isRead,
+        sentReplies: email.autoReplies.filter((r) => r.status === 'SENT').map((r) => ({ id: r.id, responseBody: r.responseBody, sentAt: r.sentAt, approvedBy: r.approvedBy })),
+      },
+    ];
+
+    const threadContext = otherConversations
+      .slice(0, 5)
+      .map((e) => ({ id: e.id, subject: e.subject, status: e.status, matchedTemplateId: e.matchedTemplateId, createdAt: e.createdAt }));
 
     return NextResponse.json({
       email,
+      thread,
       threadContext,
       lock: { isLockedToOther, ownerName: lockOwnerName },
     });

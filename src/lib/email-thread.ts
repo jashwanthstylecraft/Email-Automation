@@ -6,6 +6,19 @@
 // from both server code (classification) and client components (the inbox
 // thread view).
 
+// Strips a leading "Re:"/"Fwd:"/"Fw:" (repeated, case-insensitive) so
+// "Order #123", "Re: Order #123", and "Re: Re: Fwd: Order #123" all compare
+// equal -- the one definition of "same conversation" used both at sync time
+// (to consolidate a reply into an already-open thread) and for the inbox's
+// Gmail-style thread view (to group every Email row that belongs together).
+export function normalizeSubjectForThreading(subject: string): string {
+  let s = (subject || '').trim();
+  while (/^(re|fwd|fw)\s*:\s*/i.test(s)) {
+    s = s.replace(/^(re|fwd|fw)\s*:\s*/i, '').trim();
+  }
+  return s.toLowerCase();
+}
+
 export interface ThreadMessage {
   // The raw "who and when" line as the client itself wrote it (e.g. "Tue,
   // Sep 1, 2026 at 4:37 PM UCC Liens <UCCLiens@lexingtonrecovery.com>") --

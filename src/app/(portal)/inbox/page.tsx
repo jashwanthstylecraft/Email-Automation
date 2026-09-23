@@ -6,10 +6,10 @@ import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight, Paperclip, FileText, Download, Image as ImageIcon, Calendar
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight, Paperclip, FileText, Download, Image as ImageIcon, Calendar, History
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
-import { splitThread } from '@/lib/email-thread';
+import { splitThread, cleanEmailText } from '@/lib/email-thread';
 import EmailBodyPreview from '@/components/EmailBodyPreview';
 
 export default function InboxPage() {
@@ -97,12 +97,19 @@ export default function InboxPage() {
 
   // Customer thread context (previous emails from the same sender)
   const [threadContext, setThreadContext] = useState<any[]>([]);
+  // Gmail-style thread: every message in THIS conversation (same sender,
+  // same subject once Re:/Fwd: is stripped), oldest first, the currently
+  // open email always last. Each entry also carries whatever reply was
+  // actually sent for it.
+  const [conversationThread, setConversationThread] = useState<any[]>([]);
+  const [expandedThreadIds, setExpandedThreadIds] = useState<Set<string>>(new Set());
   // Collision-prevention lock: set when this email is assigned to a
   // different support agent, making it view-only for the current user.
   const [lockInfo, setLockInfo] = useState<{ isLockedToOther: boolean; ownerName: string | null }>({ isLockedToOther: false, ownerName: null });
   useEffect(() => {
     if (!selectedEmail) {
       setThreadContext([]);
+      setConversationThread([]);
       setLockInfo({ isLockedToOther: false, ownerName: null });
       return;
     }
@@ -110,6 +117,7 @@ export default function InboxPage() {
       .then(res => res.json())
       .then(data => {
         setThreadContext(data.threadContext || []);
+        setConversationThread(data.thread || []);
         setLockInfo(data.lock || { isLockedToOther: false, ownerName: null });
         // The list view's rows only carry a trimmed autoReplies summary (no
         // responseBody -- kept out of the list payload for pagination), so
@@ -120,6 +128,7 @@ export default function InboxPage() {
       })
       .catch(() => {
         setThreadContext([]);
+        setConversationThread([]);
         setLockInfo({ isLockedToOther: false, ownerName: null });
       });
   }, [selectedEmail?.id]);
@@ -1346,6 +1355,69 @@ export default function InboxPage() {
                 )}
               </div>
 
+              {/* Gmail-style thread history: every EARLIER email in this
+                  exact conversation (same sender, same subject once
+                  Re:/Fwd: is stripped) plus whatever reply we actually sent
+                  for each, collapsed by default -- the currently open email
+                  (always the last entry) stays fully expanded below via the
+                  existing per-email turn view. */}
+              {conversationThread.length > 1 && (
+                <div>
+                  <div className="px-3 py-1.5 bg-surface-2 border border-border rounded-t-xl text-[10px] font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5 text-text-secondary" />
+                    Thread History ({conversationThread.length} messages)
+                  </div>
+                  <div className="bg-bg border border-t-0 border-border rounded-b-xl p-3 space-y-2">
+                    {conversationThread.slice(0, -1).map((entry) => {
+                      const isExpanded = expandedThreadIds.has(entry.id);
+                      const cleanedText = cleanEmailText(entry.body);
+                      return (
+                        <div key={entry.id} className="rounded-lg border border-border bg-surface-2 overflow-hidden">
+                          <button
+                            onClick={() => setExpandedThreadIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
+                              return next;
+                            })}
+                            className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left cursor-pointer hover:bg-surface-3 transition-colors"
+                          >
+                            <span className="flex items-center gap-2 min-w-0">
+                              <span className="text-[11px] font-semibold text-text-primary truncate">{entry.sender}</span>
+                              {entry.status === 'REPLIED' && <span className="text-[8px] uppercase font-mono font-bold text-success flex-shrink-0">Replied</span>}
+                              {entry.status === 'RESOLVED' && <span className="text-[8px] uppercase font-mono font-bold text-success flex-shrink-0">Resolved</span>}
+                              {!isExpanded && (
+                                <span className="text-[10px] text-text-muted truncate">{cleanedText.slice(0, 60)}</span>
+                              )}
+                            </span>
+                            <span className="flex items-center gap-2 flex-shrink-0">
+                              <span className="text-[9px] text-text-muted">{new Date(entry.createdAt).toLocaleString()}</span>
+                              {isExpanded ? <ChevronLeft className="w-3 h-3 text-text-muted rotate-90" /> : <ChevronRight className="w-3 h-3 text-text-muted -rotate-90" />}
+                            </span>
+                          </button>
+                          {isExpanded && (
+                            <div className="px-3 pb-3 space-y-2">
+                              <div className="text-xs text-text-secondary whitespace-pre-wrap leading-relaxed border-t border-border pt-2">
+                                {cleanedText}
+                              </div>
+                              {entry.sentReplies.map((r: any) => (
+                                <div key={r.id} className="ml-4 rounded-lg border border-accent-border bg-accent-bg p-2.5">
+                                  <div className="flex items-center gap-1.5 mb-1">
+                                    <CheckCheck className="w-3 h-3 text-accent-text flex-shrink-0" />
+                                    <span className="text-[9px] uppercase font-bold text-accent-text">You replied{r.approvedBy ? ` · ${r.approvedBy.split('@')[0]}` : ''}</span>
+                                    {r.sentAt && <span className="text-[9px] text-text-muted ml-auto">{new Date(r.sentAt).toLocaleString()}</span>}
+                                  </div>
+                                  <div className="text-xs text-text-secondary whitespace-pre-wrap leading-relaxed">{r.responseBody}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Email Content Box (Customer Email) -- shown as its actual
                   message/reply/message turns rather than one raw quoted
                   blob, with legal boilerplate and signature noise stripped
@@ -1803,6 +1875,21 @@ export default function InboxPage() {
                   <Save className="w-3.5 h-3.5" />
                   Archive Email
                 </button>
+                {selectedEmail.status !== 'RESOLVED' && (
+                  <button
+                    onClick={() => {
+                      if (confirm('Mark this conversation as ended? No further reply/draft will be generated for it.')) {
+                        changeEmailStatus(selectedEmail.id, 'RESOLVED');
+                      }
+                    }}
+                    disabled={isReadOnly}
+                    className="flex items-center gap-1.5 px-3 py-2 border border-success/25 hover:border-success bg-success-bg hover:bg-success/15 text-xs rounded-lg font-semibold text-success transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Mark this conversation as ended -- no more replies needed"
+                  >
+                    <PartyPopper className="w-3.5 h-3.5" />
+                    Conversation Ended
+                  </button>
+                )}
               </div>
 
               <div className="flex gap-2">
