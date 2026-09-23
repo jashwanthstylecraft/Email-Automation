@@ -10,7 +10,7 @@ datasource db {
 model User {
   id             String       @id @default(uuid())
   email          String       @unique
-  passwordHash   String
+  passwordHash   String?      // null for a Google-only account (authProvider "google") -- there is no password to check
   name           String
   role           String       @default("Viewer") // Owner, Admin, Support Agent, Viewer
   signature      String?      // per-user reply sign-off; falls back to org Settings.closing when unset
@@ -20,6 +20,8 @@ model User {
   lastSeenAt     DateTime?    // refreshed on every authenticated request -- "active" is derived from this, not a separate stored flag
   failedLoginAttempts Int     @default(0) // reset to 0 on a successful login; drives the lockout below
   lockedUntil    DateTime?    // set once failedLoginAttempts crosses the threshold; login is refused until this passes
+  authProvider   String       @default("password") // "password" or "google" -- which login method this account uses
+  googleId       String?      // Google's stable per-account "sub" claim, recorded on first successful Google sign-in for audit -- not the security boundary itself (the email allowlist + Google's own email_verified is), so not unique-constrained
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }

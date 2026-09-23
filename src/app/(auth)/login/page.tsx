@@ -1,17 +1,31 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { Wand2, Mail, Lock, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, fetchSession } = useStore();
-  const [email, setEmail] = useState('jashwanthd@stylecraftus.com');
-  const [password, setPassword] = useState('StyleCraft@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const oauthError = searchParams.get('error');
+    if (oauthError) setError(oauthError);
+  }, [searchParams]);
 
   useEffect(() => {
     fetchSession().then(() => {
@@ -58,9 +72,6 @@ export default function LoginPage() {
         </h2>
         <p className="text-center text-sm font-semibold text-text-secondary mt-1">
           Intelligent Email Automation
-        </p>
-        <p className="mt-2 text-center text-xs text-text-secondary">
-          Demo Credentials Seeded: <span className="font-mono text-accent-text">jashwanthd@stylecraftus.com / StyleCraft@123</span>
         </p>
       </div>
 
@@ -124,6 +135,25 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
+
+          <div className="my-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <a
+            href="/api/auth/google/login"
+            className="flex w-full justify-center items-center gap-2.5 rounded-lg bg-white hover:bg-gray-50 border border-border px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-all cursor-pointer"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.46c-.28 1.5-1.13 2.77-2.4 3.62v3.01h3.89c2.28-2.1 3.57-5.2 3.57-8.82z" />
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.07 7.93-2.91l-3.89-3.01c-1.08.72-2.45 1.15-4.04 1.15-3.11 0-5.75-2.1-6.69-4.92H1.29v3.09C3.26 21.3 7.31 24 12 24z" />
+              <path fill="#FBBC05" d="M5.31 14.31A7.2 7.2 0 0 1 4.9 12c0-.8.14-1.58.4-2.31V6.6H1.29A11.98 11.98 0 0 0 0 12c0 1.94.46 3.77 1.29 5.4l4.02-3.09z" />
+              <path fill="#EA4335" d="M12 4.77c1.76 0 3.34.6 4.59 1.79l3.44-3.44C17.94 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.6l4.02 3.09C6.25 6.87 8.89 4.77 12 4.77z" />
+            </svg>
+            Sign in with Google
+          </a>
         </div>
       </div>
     </div>

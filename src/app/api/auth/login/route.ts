@@ -31,6 +31,10 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!user.passwordHash) {
+      return NextResponse.json({ error: 'This account signs in with Google. Use the "Sign in with Google" button below.' }, { status: 401 });
+    }
+
     const passwordValid = await bcrypt.compare(password || '', user.passwordHash);
     if (!passwordValid) {
       const attempts = user.failedLoginAttempts + 1;
