@@ -178,10 +178,13 @@ export async function GET(request: Request) {
       ? parseFloat(((autoRepliesSent / totalEmails) * 100).toFixed(1)) 
       : 0;
 
-    // 2. Fetch Emails grouped by categories for charts
+    // 2. Fetch Emails grouped by categories for charts -- INTERNAL (automated
+    // vendor/staff senders, never a real customer conversation) is excluded
+    // here the same way it's excluded from the Inbox's default B2C/B2B/ALL
+    // views, so it can't leak into this customer-facing category filter.
     const categoryGroup = await prisma.email.groupBy({
       by: ['category'],
-      where: { organizationId: orgId },
+      where: { organizationId: orgId, businessType: { not: 'INTERNAL' } },
       _count: { id: true },
     });
     const categoriesChart = categoryGroup.map(g => ({
