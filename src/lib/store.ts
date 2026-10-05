@@ -128,11 +128,11 @@ interface AppState {
   loadMoreEmails: () => Promise<void>;
   selectEmail: (email: Email | null) => void;
   syncInbox: () => Promise<{ success: boolean; error?: string; syncedCount?: number; isLive?: boolean }>;
-  approveDraft: (emailId: string) => Promise<void>;
+  approveDraft: (emailId: string) => Promise<{ success: boolean; error?: string }>;
   rejectDraft: (emailId: string) => Promise<void>;
   saveDraftEdits: (emailId: string, text: string) => Promise<void>;
   regenerateDraft: (emailId: string, tone: string) => Promise<{ success: boolean; error?: string }>;
-  sendCustomReply: (emailId: string, text: string) => Promise<void>;
+  sendCustomReply: (emailId: string, text: string) => Promise<{ success: boolean; error?: string }>;
   resendReply: (emailId: string, text: string) => Promise<boolean>;
   changeEmailStatus: (emailId: string, status: string) => Promise<void>;
   markAsUnread: (emailId: string) => Promise<void>;
@@ -408,12 +408,17 @@ export const useStore = create<AppState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'APPROVE' }),
       });
+      const data = await res.json();
       if (res.ok) {
         await get().fetchEmails();
         await get().fetchDashboard();
+        return { success: true };
       }
+      set({ error: data.error });
+      return { success: false, error: data.error };
     } catch (err: any) {
       set({ error: err.message });
+      return { success: false, error: err.message };
     }
   },
 
@@ -475,12 +480,17 @@ export const useStore = create<AppState>((set, get) => ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'SEND_CUSTOM', responseBody: text }),
       });
+      const data = await res.json();
       if (res.ok) {
         await get().fetchEmails();
         await get().fetchDashboard();
+        return { success: true };
       }
+      set({ error: data.error });
+      return { success: false, error: data.error };
     } catch (err: any) {
       set({ error: err.message });
+      return { success: false, error: err.message };
     }
   },
 

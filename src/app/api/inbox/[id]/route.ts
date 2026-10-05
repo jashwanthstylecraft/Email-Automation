@@ -295,6 +295,19 @@ export async function POST(
         return NextResponse.json({ error: 'No draft auto-reply found' }, { status: 400 });
       }
 
+      // Dispatch via SMTP first -- only record this as sent/replied if the
+      // message actually went out. Marking it SENT unconditionally and then
+      // swallowing a dispatch failure meant the app would claim "Reply sent"
+      // (and move the email to the Sent tab) even when nothing ever left the
+      // server, with no trace in the real mailbox's own Sent folder.
+      try {
+        const outgoing = await resolveOutgoingBody(draft.responseBody, email.matchedTemplateId);
+        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
+      } catch (sendErr) {
+        console.error('Failed to send approved SMTP email:', sendErr);
+        return NextResponse.json({ error: 'The reply could not be sent (SMTP dispatch failed). The draft has not been marked as sent -- please try again.' }, { status: 502 });
+      }
+
       await prisma.autoReply.update({
         where: { id: draft.id },
         data: {
@@ -311,14 +324,6 @@ export async function POST(
 
       if (email.customerId) {
         await prisma.customer.update({ where: { id: email.customerId }, data: { totalReplies: { increment: 1 } } });
-      }
-
-      // Dispatch real email via SMTP
-      try {
-        const outgoing = await resolveOutgoingBody(draft.responseBody, email.matchedTemplateId);
-        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
-      } catch (sendErr) {
-        console.error('Failed to send approved SMTP email:', sendErr);
       }
 
       await logAudit({
@@ -477,6 +482,15 @@ export async function POST(
     }
 
     if (action === 'SEND_CUSTOM') {
+      // Dispatch first -- see the APPROVE handler's comment above for why.
+      try {
+        const outgoing = await resolveOutgoingBody(responseBody, email.matchedTemplateId);
+        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
+      } catch (sendErr) {
+        console.error('Failed to send custom SMTP email:', sendErr);
+        return NextResponse.json({ error: 'The reply could not be sent (SMTP dispatch failed). Nothing was recorded as sent -- please try again.' }, { status: 502 });
+      }
+
       // Send a custom reply immediately
       await prisma.autoReply.create({
         data: {
@@ -495,14 +509,6 @@ export async function POST(
 
       if (email.customerId) {
         await prisma.customer.update({ where: { id: email.customerId }, data: { totalReplies: { increment: 1 } } });
-      }
-
-      // Dispatch manual response email via SMTP
-      try {
-        const outgoing = await resolveOutgoingBody(responseBody, email.matchedTemplateId);
-        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
-      } catch (sendErr) {
-        console.error('Failed to send custom SMTP email:', sendErr);
       }
 
       await logAudit({
@@ -527,6 +533,15 @@ export async function POST(
         return NextResponse.json({ error: 'A corrected reply body is required' }, { status: 400 });
       }
 
+      // Dispatch first -- see the APPROVE handler's comment above for why.
+      try {
+        const outgoing = await resolveOutgoingBody(responseBody, email.matchedTemplateId);
+        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
+      } catch (sendErr) {
+        console.error('Failed to send resent SMTP email:', sendErr);
+        return NextResponse.json({ error: 'The corrected reply could not be sent (SMTP dispatch failed). Nothing was recorded as sent -- please try again.' }, { status: 502 });
+      }
+
       await prisma.autoReply.create({
         data: {
           emailId: id,
@@ -542,13 +557,6 @@ export async function POST(
         where: { id },
         data: { status: 'REPLIED', lastActionByUserId: user?.id || null, lastActionAt: new Date() },
       });
-
-      try {
-        const outgoing = await resolveOutgoingBody(responseBody, email.matchedTemplateId);
-        await sendOutgoingMail(email.sender, email.subject, outgoing.text, outgoing.html);
-      } catch (sendErr) {
-        console.error('Failed to send resent SMTP email:', sendErr);
-      }
 
       await logAudit({
         action: 'REPLY_RESENT',

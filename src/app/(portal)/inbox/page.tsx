@@ -266,8 +266,8 @@ export default function InboxPage() {
 
   const handleApprove = async () => {
     if (!selectedEmail) return;
-    await approveDraft(selectedEmail.id);
-    showSendToast(`Reply sent to ${selectedEmail.sender}`);
+    const result = await approveDraft(selectedEmail.id);
+    showSendToast(result.success ? `Reply sent to ${selectedEmail.sender}` : (result.error || 'Failed to send reply — please try again'));
   };
 
   const handleReject = async () => {
@@ -283,10 +283,12 @@ export default function InboxPage() {
 
   const handleSendCustom = async () => {
     if (!selectedEmail) return;
-    await sendCustomReply(selectedEmail.id, customReply);
-    setCustomReply('');
-    setIsCustomMode(false);
-    showSendToast(`Reply sent to ${selectedEmail.sender}`);
+    const result = await sendCustomReply(selectedEmail.id, customReply);
+    if (result.success) {
+      setCustomReply('');
+      setIsCustomMode(false);
+    }
+    showSendToast(result.success ? `Reply sent to ${selectedEmail.sender}` : (result.error || 'Failed to send reply — please try again'));
   };
 
   const handleResend = async () => {
