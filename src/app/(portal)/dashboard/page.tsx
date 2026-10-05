@@ -83,14 +83,6 @@ export default function DashboardPage() {
       href: '/inbox',
     },
     {
-      title: 'Drafts Generated',
-      value: dashboardMetrics.draftsCreated || 0,
-      icon: Edit3,
-      color: 'text-accent-text',
-      bg: 'bg-accent-bg border-accent-border',
-      href: '/inbox?status=DRAFTS',
-    },
-    {
       title: 'Edited Drafts',
       value: dashboardMetrics.editedDraftsCount || 0,
       icon: Edit3,
