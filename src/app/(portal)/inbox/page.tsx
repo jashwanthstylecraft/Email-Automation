@@ -549,11 +549,21 @@ export default function InboxPage() {
   const FREQUENT_SENDER_THRESHOLD = 3;
   const isPrioritySender = (email: any) => (email.customer?.totalEmails ?? 0) >= FREQUENT_SENDER_THRESHOLD;
 
-  // Straight newest-first order by received date/time. Does not touch
-  // fetching, filtering, or the underlying data.
+  // Default view (no category picked) is newest-first by received date/time.
+  // A filtered category list instead defaults to working the backlog oldest
+  // unread first -- surfaces the longest-neglected customer in that category
+  // instead of whatever just arrived -- with already-read mail in that
+  // category following behind, newest-first as before.
   const sortedEmails = useMemo(() => {
+    if (activeCategory !== 'ALL') {
+      return [...emails].sort((a: any, b: any) => {
+        if (a.isRead !== b.isRead) return a.isRead ? 1 : -1;
+        const diff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        return a.isRead ? -diff : diff;
+      });
+    }
     return [...emails].sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [emails]);
+  }, [emails, activeCategory]);
 
   const getSentimentColor = (s: string) => {
     switch (s) {
@@ -804,7 +814,17 @@ export default function InboxPage() {
             </span>
             <select
               value={activeCategory}
-              onChange={(e) => setActiveCategory(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setActiveCategory(next);
+                // Filtering down to a specific category defaults the date
+                // range to the last 30 days (unless the viewer already set
+                // one) -- triaging a category is a recent-backlog task, not
+                // a full-history search.
+                if (next !== 'ALL' && dateRangePreset === 'ALL') {
+                  setDateRangePreset('30D');
+                }
+              }}
               className="bg-surface-2 border border-border rounded-md px-2 py-1 text-[10px] text-text-primary cursor-pointer outline-none focus:border-accent"
             >
               <option value="ALL">All ({totalCategorized})</option>
