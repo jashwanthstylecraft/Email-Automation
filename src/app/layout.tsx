@@ -20,11 +20,13 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        {/* Defaults to light (white background, dark text) regardless of the
-            viewer's OS preference -- the near-black dark theme was reported
-            as too low-contrast to read comfortably. The toggle still lets
-            anyone switch to Dark or System explicitly if they want it. */}
-        <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem>
+        {/* Forced to light (plain white background, dark text) -- a plain
+            defaultTheme wasn't enough: next-themes persists whatever theme a
+            browser previously resolved to in localStorage, so anyone who'd
+            loaded this app before (under the old "system" default) kept
+            seeing the dark theme regardless. forcedTheme overrides that
+            stored value and the OS preference unconditionally. */}
+        <ThemeProvider attribute="data-theme" forcedTheme="light">
           {children}
         </ThemeProvider>
       </body>

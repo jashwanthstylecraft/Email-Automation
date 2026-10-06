@@ -28,12 +28,17 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #f7f8fa;
+  /* Plain white, not a tinted off-white/gray -- panels and the page itself
+     stay pure white and are separated by --border alone (bumped up a touch
+     here since there's no background-shade difference left to lean on).
+     --surface-3 keeps a faint gray, but only for hover/active feedback, not
+     as a resting background anywhere. */
+  --bg: #ffffff;
   --surface-1: #ffffff;
-  --surface-2: #f3f4f6;
-  --surface-3: #e9eaee;
-  --border: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.14);
+  --surface-2: #ffffff;
+  --surface-3: #f5f5f5;
+  --border: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.18);
   --text-primary: #18181b;
   --text-secondary: #374151;
   --text-muted: #52525b;
