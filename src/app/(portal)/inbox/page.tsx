@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import {
   Search, Mail, AlertTriangle, ShieldCheck, Flame,
-  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight, Paperclip, FileText, Download, Image as ImageIcon, Calendar, History
+  Send, RefreshCw, UserCheck, ShieldQuestion, HelpCircle, Edit3, Trash2, ArrowUpRight, Sparkles, Save, Check, ThumbsUp, ThumbsDown, MessageSquare, ToggleLeft, Tag, Inbox as InboxIcon, CheckCheck, PartyPopper, FileEdit, Archive, StickyNote, Briefcase, ChevronLeft, ChevronRight, Paperclip, FileText, Download, Image as ImageIcon, Calendar, History, Eye
 } from 'lucide-react';
 import { parseKeywords, matchTemplates, TemplateForScoring, totalKeywordCount, extractKeywordsForTemplate, serializeKeywords } from '@/lib/keyword-engine';
 import { splitThread, cleanEmailText } from '@/lib/email-thread';
@@ -1406,29 +1406,56 @@ export default function InboxPage() {
                     {selectedEmailAttachments.map((att, i) => {
                       const isImage = att.contentType?.startsWith('image/');
                       const isVideo = att.contentType?.startsWith('video/');
+                      // Clicking the attachment opens it in a new tab to VIEW
+                      // (no `download` attribute -- the browser's own
+                      // image/PDF/video viewer renders it inline) so an agent
+                      // can read it and come straight back to this tab to
+                      // reply, instead of it dropping into their Downloads
+                      // folder. "Save" stays as an explicit, separate action
+                      // for anyone who actually wants the file itself.
                       return (
                         <div key={i} className="bg-surface-2 border border-border rounded-lg p-2 space-y-1.5">
-                          {isImage && att.dataUrl ? (
-                            <img src={att.dataUrl} alt={att.filename} className="w-full h-20 object-cover rounded" />
-                          ) : isVideo && att.dataUrl ? (
-                            <video src={att.dataUrl} controls className="w-full h-20 object-cover rounded bg-black" />
-                          ) : (
-                            <div className="w-full h-20 flex items-center justify-center bg-surface-3 rounded">
-                              {isImage ? <ImageIcon className="w-6 h-6 text-text-muted" /> : <FileText className="w-6 h-6 text-text-muted" />}
-                            </div>
-                          )}
+                          <a
+                            href={att.dataUrl || undefined}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={att.dataUrl ? `View ${att.filename}` : att.filename}
+                            className={att.dataUrl ? 'cursor-pointer' : 'cursor-default'}
+                            onClick={(e) => { if (!att.dataUrl) e.preventDefault(); }}
+                          >
+                            {isImage && att.dataUrl ? (
+                              <img src={att.dataUrl} alt={att.filename} className="w-full h-20 object-cover rounded hover:opacity-80 transition-opacity" />
+                            ) : isVideo && att.dataUrl ? (
+                              <video src={att.dataUrl} controls className="w-full h-20 object-cover rounded bg-black" />
+                            ) : (
+                              <div className={`w-full h-20 flex items-center justify-center bg-surface-3 rounded ${att.dataUrl ? 'hover:bg-surface-3/70 transition-colors' : ''}`}>
+                                {isImage ? <ImageIcon className="w-6 h-6 text-text-muted" /> : <FileText className="w-6 h-6 text-text-muted" />}
+                              </div>
+                            )}
+                          </a>
                           <p className="text-[10px] text-text-primary truncate font-medium" title={att.filename}>{att.filename}</p>
                           <div className="flex items-center justify-between">
                             <span className="text-[9px] text-text-muted">{formatFileSize(att.size)}</span>
                             {att.dataUrl ? (
-                              <a
-                                href={att.dataUrl}
-                                download={att.filename}
-                                className="flex items-center gap-0.5 text-[9px] text-accent-text hover:text-accent font-semibold cursor-pointer"
-                                title="Download"
-                              >
-                                <Download className="w-3 h-3" /> Save
-                              </a>
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={att.dataUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-0.5 text-[9px] text-accent-text hover:text-accent font-semibold cursor-pointer"
+                                  title="View"
+                                >
+                                  <Eye className="w-3 h-3" /> View
+                                </a>
+                                <a
+                                  href={att.dataUrl}
+                                  download={att.filename}
+                                  className="flex items-center gap-0.5 text-[9px] text-text-secondary hover:text-text-primary font-semibold cursor-pointer"
+                                  title="Download"
+                                >
+                                  <Download className="w-3 h-3" /> Save
+                                </a>
+                              </div>
                             ) : (
                               <span className="text-[9px] text-text-muted italic" title="This file was too large to store">Too large</span>
                             )}
