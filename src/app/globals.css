@@ -35,8 +35,8 @@
   --border: rgba(0, 0, 0, 0.08);
   --border-strong: rgba(0, 0, 0, 0.14);
   --text-primary: #18181b;
-  --text-secondary: #4b5563;
-  --text-muted: #71717a;
+  --text-secondary: #374151;
+  --text-muted: #52525b;
   --accent-text: #4f46e5;
   /* The dark theme's badge/status colors (accent/success/warning/danger)
      are low-alpha tints designed to glow against a near-black background --

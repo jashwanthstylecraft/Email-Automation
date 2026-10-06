@@ -20,7 +20,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem>
+        {/* Defaults to light (white background, dark text) regardless of the
+            viewer's OS preference -- the near-black dark theme was reported
+            as too low-contrast to read comfortably. The toggle still lets
+            anyone switch to Dark or System explicitly if they want it. */}
+        <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem>
           {children}
         </ThemeProvider>
       </body>
