@@ -20,13 +20,14 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        {/* Forced to light (plain white background, dark text) -- a plain
-            defaultTheme wasn't enough: next-themes persists whatever theme a
-            browser previously resolved to in localStorage, so anyone who'd
-            loaded this app before (under the old "system" default) kept
-            seeing the dark theme regardless. forcedTheme overrides that
-            stored value and the OS preference unconditionally. */}
-        <ThemeProvider attribute="data-theme" forcedTheme="light">
+        {/* Light (plain white background, dark text) is the default instead
+            of following the OS preference, but the toggle below still lets
+            anyone switch to Dark -- not forced. Note for anyone testing this:
+            next-themes persists whatever theme a browser previously resolved
+            to in localStorage, so a browser that already loaded this app
+            under the old "system" default keeps showing dark until the
+            toggle is used once or site data is cleared. */}
+        <ThemeProvider attribute="data-theme" defaultTheme="light" enableSystem>
           {children}
         </ThemeProvider>
       </body>

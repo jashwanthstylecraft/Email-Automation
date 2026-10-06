@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store';
 import { CommandMenu } from '@/components/command-menu';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import {
   LayoutGrid, Mail, Sliders, FileText, Settings as SettingsIcon,
   Terminal, LogOut, RefreshCw, Wand2, Activity, StickyNote, History, ChevronLeft, ChevronRight
@@ -209,6 +210,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               Sync Inbox
             </button>
+            <ThemeToggle />
           </div>
         </header>
 
