@@ -140,6 +140,9 @@ export default function InboxPage() {
   const [newNoteText, setNewNoteText] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
+  // Collapsed by default -- a small icon button rather than a permanently
+  // expanded panel, since most emails have no note and don't need the space.
+  const [showInternalNotes, setShowInternalNotes] = useState(false);
 
   const loadEmailNotes = async (emailId: string) => {
     if (!user) return;
@@ -251,6 +254,7 @@ export default function InboxPage() {
       setFeedbackMsg('');
       setNewKeywordInput('');
       setShowKeywordForm(false);
+      setShowInternalNotes(false);
       setOverrideTemplateName(null);
       setFlaggedWrong(false);
       setIsResending(false);
@@ -1268,115 +1272,6 @@ export default function InboxPage() {
                 </div>
               </div>
 
-              {/* Feedback Actions Section */}
-              <div className="glass-panel p-4 rounded-xl border border-border bg-surface-2 space-y-3">
-                <div className="flex justify-between items-center">
-                  <h4 className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Match Accuracy Feedback (AI Learning Layer)</h4>
-                  {selectedEmail.userFeedback && (
-                    <span className="px-2 py-0.5 rounded bg-success-bg border border-success/25 text-[9px] text-success font-mono font-bold">
-                      Saved: {selectedEmail.userFeedback}
-                    </span>
-                  )}
-                </div>
-
-                {feedbackSubmitted && (
-                  <div className="p-2.5 bg-success-bg border border-success/25 rounded-lg text-[10px] text-success flex items-center gap-1.5">
-                    <Check className="w-3.5 h-3.5" />
-                    {feedbackMsg}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    onClick={() => handleFeedback('Correct Template')}
-                    disabled={!!selectedEmail.userFeedback || isReadOnly}
-                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback
-                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
-                        : 'border-border hover:border-success bg-surface-2 hover:bg-success-bg text-text-secondary hover:text-success cursor-pointer'
-                    }`}
-                  >
-                    <ThumbsUp className="w-3 h-3" /> Correct Template
-                  </button>
-                  <button
-                    onClick={() => {
-                      setFlaggedWrong(true);
-                      handleFeedback('Wrong Template');
-                    }}
-                    disabled={!!selectedEmail.userFeedback || isReadOnly}
-                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback
-                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
-                        : 'border-border hover:border-danger bg-surface-2 hover:bg-danger-bg text-text-secondary hover:text-danger cursor-pointer'
-                    }`}
-                  >
-                    <ThumbsDown className="w-3 h-3" /> Wrong Template
-                  </button>
-                  <button
-                    onClick={() => {
-                      handleFeedback('Better Template Exists');
-                      // Focus the search dropdown by default
-                      const inputEl = document.querySelector('input[placeholder="Search templates..."]') as HTMLInputElement;
-                      if (inputEl) inputEl.focus();
-                    }}
-                    disabled={!!selectedEmail.userFeedback || isReadOnly}
-                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback
-                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
-                        : 'border-border hover:border-warning bg-surface-2 hover:bg-warning-bg text-text-secondary hover:text-warning cursor-pointer'
-                    }`}
-                  >
-                    <ShieldQuestion className="w-3 h-3" /> Better Template Exists
-                  </button>
-                  <button
-                    onClick={() => setShowKeywordForm(!showKeywordForm)}
-                    disabled={!!selectedEmail.userFeedback || isReadOnly}
-                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback
-                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
-                        : 'border-border hover:border-accent bg-surface-2 hover:bg-accent-bg text-text-secondary hover:text-accent-text cursor-pointer'
-                    }`}
-                  >
-                    <MessageSquare className="w-3 h-3" /> Add Keyword
-                  </button>
-                  <button
-                    onClick={() => handleFeedback('Disable This Rule')}
-                    disabled={!!selectedEmail.userFeedback || isReadOnly}
-                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
-                      selectedEmail.userFeedback
-                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
-                        : 'border-border hover:border-danger bg-surface-2 hover:bg-danger/15 text-text-secondary hover:text-danger cursor-pointer'
-                    }`}
-                  >
-                    <ToggleLeft className="w-3 h-3" /> Disable Template Rule
-                  </button>
-                </div>
-
-                {flaggedWrong && (
-                  <p className="text-[10px] text-danger font-semibold mt-2 animate-pulse flex items-center gap-1">
-                    <span>⚠️ Wrong template flagged. Please type to search and select the correct template in the "Manual Override" dropdown above to save correction.</span>
-                  </p>
-                )}
-
-                {showKeywordForm && (
-                  <form onSubmit={handleAddKeyword} className="flex gap-2 items-center mt-3">
-                    <input
-                      type="text"
-                      value={newKeywordInput}
-                      onChange={(e) => setNewKeywordInput(e.target.value)}
-                      placeholder="Enter new trigger keyword (e.g. 'warranty tag')..."
-                      className="bg-bg border border-border rounded-lg px-3 py-1.5 text-text-primary outline-none focus:border-accent flex-1 text-[11px]"
-                    />
-                    <button
-                      type="submit"
-                      className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg font-semibold cursor-pointer"
-                    >
-                      Save Keyword
-                    </button>
-                  </form>
-                )}
-              </div>
-
               {/* Gmail-style thread history: every EARLIER email in this
                   exact conversation (same sender, same subject once
                   Re:/Fwd: is stripped) plus whatever reply we actually sent
@@ -1545,13 +1440,27 @@ export default function InboxPage() {
                 </div>
               )}
 
-              {/* Internal Notes (staff-only -- never sent to the customer) -- sits between the Customer Email above and the AI Response Draft below */}
+              {/* Internal Notes (staff-only -- never sent to the customer) -- sits between the Customer Email above and the AI Response Draft below.
+                  Collapsed to a small icon by default (most emails have no note and don't need the space); click opens the panel to write/read one. */}
               <div>
-                <div className="px-3 py-1.5 bg-accent-bg border border-accent-border rounded-t-xl text-[10px] font-semibold text-accent-text uppercase tracking-wider flex items-center gap-1.5">
-                  <StickyNote className="w-3.5 h-3.5 text-accent-text" />
-                  Internal Notes (Staff Only — Never Sent to Customer)
-                </div>
-                <div className="bg-accent-bg border border-t-0 border-accent-border rounded-b-xl p-4 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setShowInternalNotes((v) => !v)}
+                  title="Internal Notes (Staff Only — Never Sent to Customer)"
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[10px] font-semibold uppercase tracking-wider cursor-pointer transition-colors ${
+                    showInternalNotes
+                      ? 'bg-accent-bg border-accent-border text-accent-text'
+                      : 'bg-surface-2 border-border text-text-secondary hover:border-accent-border hover:text-accent-text'
+                  }`}
+                >
+                  <StickyNote className="w-3.5 h-3.5" />
+                  Internal Notes
+                  {emailNotes.length > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-accent text-white text-[9px] leading-none normal-case font-bold">{emailNotes.length}</span>
+                  )}
+                </button>
+                {showInternalNotes && (
+                <div className="mt-2 bg-accent-bg border border-accent-border rounded-xl p-4 space-y-3">
                   {emailNotes.length === 0 && (
                     <p className="text-[10px] text-text-muted text-center py-2">No internal notes on this email yet.</p>
                   )}
@@ -1605,6 +1514,7 @@ export default function InboxPage() {
                     </button>
                   </div>
                 </div>
+                )}
               </div>
 
               {/* Per-Email Tone Selector -- changes this email's draft only, never the org-wide Settings.tone */}
@@ -1724,6 +1634,118 @@ export default function InboxPage() {
                   </div>
                 </div>
               )}
+
+              {/* Feedback Actions Section -- sits directly below the draft
+                  message (rather than above it) so giving feedback is the
+                  very next thing an agent does after reading what the AI
+                  drafted, not something they have to scroll back up for. */}
+              <div className="glass-panel p-4 rounded-xl border border-border bg-surface-2 space-y-3">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Match Accuracy Feedback (AI Learning Layer)</h4>
+                  {selectedEmail.userFeedback && (
+                    <span className="px-2 py-0.5 rounded bg-success-bg border border-success/25 text-[9px] text-success font-mono font-bold">
+                      Saved: {selectedEmail.userFeedback}
+                    </span>
+                  )}
+                </div>
+
+                {feedbackSubmitted && (
+                  <div className="p-2.5 bg-success-bg border border-success/25 rounded-lg text-[10px] text-success flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5" />
+                    {feedbackMsg}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={() => handleFeedback('Correct Template')}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
+                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
+                      selectedEmail.userFeedback
+                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
+                        : 'border-border hover:border-success bg-surface-2 hover:bg-success-bg text-text-secondary hover:text-success cursor-pointer'
+                    }`}
+                  >
+                    <ThumbsUp className="w-3 h-3" /> Correct Template
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFlaggedWrong(true);
+                      handleFeedback('Wrong Template');
+                    }}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
+                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
+                      selectedEmail.userFeedback
+                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
+                        : 'border-border hover:border-danger bg-surface-2 hover:bg-danger-bg text-text-secondary hover:text-danger cursor-pointer'
+                    }`}
+                  >
+                    <ThumbsDown className="w-3 h-3" /> Wrong Template
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleFeedback('Better Template Exists');
+                      // Focus the search dropdown by default
+                      const inputEl = document.querySelector('input[placeholder="Search templates..."]') as HTMLInputElement;
+                      if (inputEl) inputEl.focus();
+                    }}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
+                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
+                      selectedEmail.userFeedback
+                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
+                        : 'border-border hover:border-warning bg-surface-2 hover:bg-warning-bg text-text-secondary hover:text-warning cursor-pointer'
+                    }`}
+                  >
+                    <ShieldQuestion className="w-3 h-3" /> Better Template Exists
+                  </button>
+                  <button
+                    onClick={() => setShowKeywordForm(!showKeywordForm)}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
+                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
+                      selectedEmail.userFeedback
+                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
+                        : 'border-border hover:border-accent bg-surface-2 hover:bg-accent-bg text-text-secondary hover:text-accent-text cursor-pointer'
+                    }`}
+                  >
+                    <MessageSquare className="w-3 h-3" /> Add Keyword
+                  </button>
+                  <button
+                    onClick={() => handleFeedback('Disable This Rule')}
+                    disabled={!!selectedEmail.userFeedback || isReadOnly}
+                    className={`flex items-center gap-1 px-3 py-1.5 border rounded-lg font-semibold transition-all ${
+                      selectedEmail.userFeedback
+                        ? 'border-border bg-surface-2 text-text-muted cursor-not-allowed opacity-50'
+                        : 'border-border hover:border-danger bg-surface-2 hover:bg-danger/15 text-text-secondary hover:text-danger cursor-pointer'
+                    }`}
+                  >
+                    <ToggleLeft className="w-3 h-3" /> Disable Template Rule
+                  </button>
+                </div>
+
+                {flaggedWrong && (
+                  <p className="text-[10px] text-danger font-semibold mt-2 animate-pulse flex items-center gap-1">
+                    <span>⚠️ Wrong template flagged. Please type to search and select the correct template in the "Manual Override" dropdown above to save correction.</span>
+                  </p>
+                )}
+
+                {showKeywordForm && (
+                  <form onSubmit={handleAddKeyword} className="flex gap-2 items-center mt-3">
+                    <input
+                      type="text"
+                      value={newKeywordInput}
+                      onChange={(e) => setNewKeywordInput(e.target.value)}
+                      placeholder="Enter new trigger keyword (e.g. 'warranty tag')..."
+                      className="bg-bg border border-border rounded-lg px-3 py-1.5 text-text-primary outline-none focus:border-accent flex-1 text-[11px]"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white rounded-lg font-semibold cursor-pointer"
+                    >
+                      Save Keyword
+                    </button>
+                  </form>
+                )}
+              </div>
 
               {/* Custom manual reply console */}
               {isCustomMode && (
