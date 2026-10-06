@@ -643,6 +643,12 @@ export default function InboxPage() {
     }
   })();
 
+  // The attachment currently shown large in the in-page overlay (null when
+  // closed). Reset whenever a different email is opened so it never carries
+  // over to the next one.
+  const [viewingAttachment, setViewingAttachment] = useState<{ filename: string; contentType: string; dataUrl: string | null } | null>(null);
+  useEffect(() => { setViewingAttachment(null); }, [selectedEmail?.id]);
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -1406,47 +1412,48 @@ export default function InboxPage() {
                     {selectedEmailAttachments.map((att, i) => {
                       const isImage = att.contentType?.startsWith('image/');
                       const isVideo = att.contentType?.startsWith('video/');
-                      // Clicking the attachment opens it in a new tab to VIEW
-                      // (no `download` attribute -- the browser's own
-                      // image/PDF/video viewer renders it inline) so an agent
-                      // can read it and come straight back to this tab to
-                      // reply, instead of it dropping into their Downloads
-                      // folder. "Save" stays as an explicit, separate action
-                      // for anyone who actually wants the file itself.
+                      const isPdf = att.contentType === 'application/pdf';
+                      const canPreview = !!att.dataUrl && (isImage || isVideo || isPdf);
+                      // Viewing opens an in-page overlay (not a new tab) --
+                      // browsers block a `target="_blank"` navigation straight
+                      // to a data: URI (shows as "about:blank#blocked"), since
+                      // these attachments are stored as data URLs, not real
+                      // file URLs. The overlay has its own close button to go
+                      // back to the small thumbnail view.
                       return (
                         <div key={i} className="bg-surface-2 border border-border rounded-lg p-2 space-y-1.5">
-                          <a
-                            href={att.dataUrl || undefined}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            title={att.dataUrl ? `View ${att.filename}` : att.filename}
-                            className={att.dataUrl ? 'cursor-pointer' : 'cursor-default'}
-                            onClick={(e) => { if (!att.dataUrl) e.preventDefault(); }}
+                          <button
+                            type="button"
+                            onClick={() => canPreview && setViewingAttachment(att)}
+                            title={canPreview ? `View ${att.filename}` : att.filename}
+                            className={`w-full ${canPreview ? 'cursor-pointer' : 'cursor-default'}`}
+                            disabled={!canPreview}
                           >
                             {isImage && att.dataUrl ? (
                               <img src={att.dataUrl} alt={att.filename} className="w-full h-20 object-cover rounded hover:opacity-80 transition-opacity" />
                             ) : isVideo && att.dataUrl ? (
-                              <video src={att.dataUrl} controls className="w-full h-20 object-cover rounded bg-black" />
+                              <video src={att.dataUrl} className="w-full h-20 object-cover rounded bg-black pointer-events-none" />
                             ) : (
-                              <div className={`w-full h-20 flex items-center justify-center bg-surface-3 rounded ${att.dataUrl ? 'hover:bg-surface-3/70 transition-colors' : ''}`}>
+                              <div className={`w-full h-20 flex items-center justify-center bg-surface-3 rounded ${canPreview ? 'hover:bg-surface-3/70 transition-colors' : ''}`}>
                                 {isImage ? <ImageIcon className="w-6 h-6 text-text-muted" /> : <FileText className="w-6 h-6 text-text-muted" />}
                               </div>
                             )}
-                          </a>
+                          </button>
                           <p className="text-[10px] text-text-primary truncate font-medium" title={att.filename}>{att.filename}</p>
                           <div className="flex items-center justify-between">
                             <span className="text-[9px] text-text-muted">{formatFileSize(att.size)}</span>
                             {att.dataUrl ? (
                               <div className="flex items-center gap-2">
-                                <a
-                                  href={att.dataUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-0.5 text-[9px] text-accent-text hover:text-accent font-semibold cursor-pointer"
-                                  title="View"
-                                >
-                                  <Eye className="w-3 h-3" /> View
-                                </a>
+                                {canPreview && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingAttachment(att)}
+                                    className="flex items-center gap-0.5 text-[9px] text-accent-text hover:text-accent font-semibold cursor-pointer"
+                                    title="View"
+                                  >
+                                    <Eye className="w-3 h-3" /> View
+                                  </button>
+                                )}
                                 <a
                                   href={att.dataUrl}
                                   download={att.filename}
@@ -1987,6 +1994,67 @@ export default function InboxPage() {
           </>
         )}
       </div>
+
+      {/* Attachment preview overlay -- in-page (same tab) rather than a new
+          tab/window, since a `target="_blank"` navigation straight to a
+          data: URI gets blocked by the browser ("about:blank#blocked").
+          Closing goes back to the small thumbnail grid, not a new page. */}
+      <AnimatePresence>
+        {viewingAttachment && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-6"
+            onClick={() => setViewingAttachment(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+              className="relative max-w-[90vw] max-h-[85vh] flex flex-col items-center gap-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between w-full gap-4">
+                <p className="text-xs text-white/90 font-medium truncate">{viewingAttachment.filename}</p>
+                <button
+                  type="button"
+                  onClick={() => setViewingAttachment(null)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white text-[11px] font-semibold cursor-pointer flex-shrink-0"
+                  title="Close"
+                >
+                  ✕ Close
+                </button>
+              </div>
+              {viewingAttachment.contentType?.startsWith('image/') && viewingAttachment.dataUrl ? (
+                <img
+                  src={viewingAttachment.dataUrl}
+                  alt={viewingAttachment.filename}
+                  className="max-w-[90vw] max-h-[75vh] object-contain rounded-lg shadow-2xl"
+                />
+              ) : viewingAttachment.contentType?.startsWith('video/') && viewingAttachment.dataUrl ? (
+                <video
+                  src={viewingAttachment.dataUrl}
+                  controls
+                  autoPlay
+                  className="max-w-[90vw] max-h-[75vh] rounded-lg shadow-2xl bg-black"
+                />
+              ) : viewingAttachment.contentType === 'application/pdf' && viewingAttachment.dataUrl ? (
+                <iframe
+                  src={viewingAttachment.dataUrl}
+                  title={viewingAttachment.filename}
+                  className="w-[90vw] h-[75vh] rounded-lg shadow-2xl bg-white"
+                />
+              ) : (
+                <div className="w-[60vw] max-w-md h-40 flex items-center justify-center bg-surface-2 rounded-lg text-text-secondary text-xs">
+                  Preview not available for this file type.
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Animated send confirmation toast */}
       <AnimatePresence>
