@@ -192,6 +192,22 @@ export async function GET(request: Request) {
       value: g._count.id
     }));
 
+    // 2b. Counts for the Inbox page's Customer Type filter (All/B2C/B2B/
+    // Internal) -- unlike the category breakdown above, this one DOES
+    // include Internal, since the filter itself needs to show how many
+    // internal/automated emails are sitting there to pick.
+    const businessTypeGroup = await prisma.email.groupBy({
+      by: ['businessType'],
+      where: { organizationId: orgId },
+      _count: { id: true },
+    });
+    const businessTypeCounts = {
+      ALL: businessTypeGroup.filter(g => g.businessType !== 'INTERNAL').reduce((sum, g) => sum + g._count.id, 0),
+      B2C: businessTypeGroup.find(g => g.businessType === 'B2C')?._count.id ?? 0,
+      B2B: businessTypeGroup.find(g => g.businessType === 'B2B')?._count.id ?? 0,
+      INTERNAL: businessTypeGroup.find(g => g.businessType === 'INTERNAL')?._count.id ?? 0,
+    };
+
     // 3. Fetch Emails grouped by sentiment for charts
     const sentimentGroup = await prisma.email.groupBy({
       by: ['sentiment'],
@@ -354,6 +370,7 @@ export async function GET(request: Request) {
         emailsPerDay,
         categories: categoriesChart,
         sentiment: sentimentChart,
+        businessTypeCounts,
       },
       recentActivity: recentEmails.map(e => ({
         id: e.id,

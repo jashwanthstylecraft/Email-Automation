@@ -807,7 +807,7 @@ export default function InboxPage() {
                       : 'bg-surface-2 border border-border text-text-secondary hover:text-text-primary hover:bg-surface-3'
                   }`}
                 >
-                  {bt === 'ALL' ? 'All' : bt === 'INTERNAL' ? 'Internal' : bt}
+                  {bt === 'ALL' ? 'All' : bt === 'INTERNAL' ? 'Internal' : bt} ({dashboardCharts?.businessTypeCounts?.[bt] ?? 0})
                 </button>
               ))}
             </div>
