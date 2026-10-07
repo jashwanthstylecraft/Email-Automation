@@ -472,6 +472,13 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
             }
             pending.push({ seq, newEmail, senderEmail, senderName, subject, isInternal: isInternalOrAutomated });
           }
+        } else {
+          // Already imported in an earlier pass (matched by Message-ID) --
+          // nothing left to do, but this MUST still flip \Seen. Without it,
+          // Gmail keeps reporting this message as unseen forever, so every
+          // future sync re-fetches and re-checks it again, never actually
+          // finishing the backlog no matter how many passes run.
+          await client.messageFlagsAdd({ seq }, ['\\Seen']);
         }
       }
 
