@@ -952,8 +952,23 @@ export default function InboxPage() {
               return (
               <div
                 key={email.id}
-                onClick={() => selectEmail(email)}
-                className={`p-4 cursor-pointer hover:bg-surface-3 transition-colors border-l-2 ${
+                onClick={() => {
+                  // TEMPORARY: opening a Sent (REPLIED) email is crashing the
+                  // browser tab for at least one user and the cause isn't
+                  // identified yet (server-side logs show every request
+                  // succeeding cleanly, so it's a client-side render issue
+                  // that hasn't been reproduced yet). Disabled opening these
+                  // specifically until that's root-caused, rather than leave
+                  // everyone able to hit an unfixed crash in the meantime.
+                  if (email.status === 'REPLIED') {
+                    showSendToast('Opening Sent emails is temporarily disabled while a crash is being investigated.');
+                    return;
+                  }
+                  selectEmail(email);
+                }}
+                className={`p-4 transition-colors border-l-2 ${
+                  email.status === 'REPLIED' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:bg-surface-3'
+                } ${
                   selectedEmail?.id === email.id
                     ? 'bg-surface-2 border-accent'
                     : 'border-transparent'
