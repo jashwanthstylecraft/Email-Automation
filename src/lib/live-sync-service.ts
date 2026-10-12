@@ -15,12 +15,12 @@ import { cleanEmailText, isConversationClosingMessage, normalizeSubjectForThread
 // through all of it one message at a time would take hours and blow well
 // past any serverless function's execution limit. Two independent caps
 // keep every sync pass fast and bounded:
-//  - SYNC_LOOKBACK_MONTHS: anything older is never looked at, permanently
+//  - SYNC_LOOKBACK_DAYS: anything older is never looked at, permanently
 //    (the IMAP search itself excludes it -- zero cost).
 //  - MAX_MESSAGES_PER_SYNC: even within that window, only this many of the
 //    newest unseen messages are processed per pass; the rest stay unseen
 //    and get picked up on subsequent runs, draining newest-first.
-const SYNC_LOOKBACK_MONTHS = 3;
+const SYNC_LOOKBACK_DAYS = 60;
 const MAX_MESSAGES_PER_SYNC = 40;
 
 // A real, direct-to-customer mailbox also carries traffic that's never a
@@ -260,11 +260,11 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
   const emailsSynced: any[] = [];
 
   try {
-    // Search for unseen messages, bounded to the last SYNC_LOOKBACK_MONTHS --
+    // Search for unseen messages, bounded to the last SYNC_LOOKBACK_DAYS --
     // a real mailbox can carry a huge unseen backlog, and anything older
     // than this is never worth surfacing as a "new" support request anyway.
     const lookbackCutoff = new Date();
-    lookbackCutoff.setMonth(lookbackCutoff.getMonth() - SYNC_LOOKBACK_MONTHS);
+    lookbackCutoff.setDate(lookbackCutoff.getDate() - SYNC_LOOKBACK_DAYS);
     const unseenInWindow = await client.search({ seen: false, since: lookbackCutoff });
 
     if (unseenInWindow && Array.isArray(unseenInWindow)) {
@@ -273,7 +273,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
       // first; anything past the cap stays unseen and is picked up (still
       // newest-first) on the next sync run instead of all at once.
       const unseenList = [...unseenInWindow].sort((a, b) => b - a).slice(0, MAX_MESSAGES_PER_SYNC);
-      console.log(`Found ${unseenInWindow.length} unseen message(s) within the last ${SYNC_LOOKBACK_MONTHS} month(s); processing the newest ${unseenList.length} this pass.`);
+      console.log(`Found ${unseenInWindow.length} unseen message(s) within the last ${SYNC_LOOKBACK_DAYS} days; processing the newest ${unseenList.length} this pass.`);
 
       // Pass 1: fetch/parse/filter every unseen message and create its Email
       // row (unchanged from before), but don't classify yet -- collect them
@@ -613,7 +613,7 @@ export async function syncLiveIMAPEmail(inboxId: string): Promise<any> {
         }
       }
     } else {
-      console.log(`No unseen messages found within the last ${SYNC_LOOKBACK_MONTHS} month(s).`);
+      console.log(`No unseen messages found within the last ${SYNC_LOOKBACK_DAYS} days.`);
     }
   } finally {
     lock.release();
