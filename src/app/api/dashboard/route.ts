@@ -11,15 +11,27 @@ export async function GET(request: Request) {
     }
     const orgId = user.organizationId;
 
+    // Dashboard headline/volume metrics (totals, charts, accuracy, response
+    // time) are scoped to the last 60 days -- these describe recent
+    // performance, not all-time history, and an all-time "Emails Processed"
+    // count was dominated by years of accumulated INTERNAL/automated noise.
+    // Backlog/queue counts below (pendingEmails, draftsCreated, failed
+    // matches, etc.) are deliberately NOT scoped -- an email still sitting
+    // in Manual Review from 70 days ago still needs action today, and these
+    // numbers link straight to review pages that show everything regardless
+    // of age, so hiding old-but-unresolved items here would be misleading.
+    const since = new Date();
+    since.setDate(since.getDate() - 60);
+
     // 1. Calculate primary metrics
-    const totalEmails = await prisma.email.count({ where: { organizationId: orgId } });
-    
-    const autoRepliesSent = await prisma.email.count({ 
-      where: { organizationId: orgId, status: 'REPLIED' } 
+    const totalEmails = await prisma.email.count({ where: { organizationId: orgId, createdAt: { gte: since } } });
+
+    const autoRepliesSent = await prisma.email.count({
+      where: { organizationId: orgId, status: 'REPLIED', createdAt: { gte: since } }
     });
 
-    const pendingEmails = await prisma.email.count({ 
-      where: { organizationId: orgId, status: 'WAITING' } 
+    const pendingEmails = await prisma.email.count({
+      where: { organizationId: orgId, status: 'WAITING' }
     });
 
     const failedAttempts = await prisma.autoReply.count({
@@ -47,14 +59,16 @@ export async function GET(request: Request) {
     const userFeedbackCount = await prisma.email.count({
       where: {
         organizationId: orgId,
-        userFeedback: { not: null }
+        userFeedback: { not: null },
+        createdAt: { gte: since },
       }
     });
 
     const correctFeedback = await prisma.email.count({
       where: {
         organizationId: orgId,
-        userFeedback: 'Correct Template'
+        userFeedback: 'Correct Template',
+        createdAt: { gte: since },
       }
     });
 
@@ -65,7 +79,7 @@ export async function GET(request: Request) {
     // Most used templates
     const emailMatches = await prisma.email.groupBy({
       by: ['matchedTemplateId'],
-      where: { organizationId: orgId, matchedTemplateId: { not: null } },
+      where: { organizationId: orgId, matchedTemplateId: { not: null }, createdAt: { gte: since } },
       _count: { id: true }
     });
     const templatesList = await prisma.template.findMany({
@@ -141,7 +155,7 @@ export async function GET(request: Request) {
     // Real Average Response Time calculation
     const autoReplies = await prisma.autoReply.findMany({
       where: {
-        email: { organizationId: orgId },
+        email: { organizationId: orgId, createdAt: { gte: since } },
         status: 'SENT',
         sentAt: { not: null }
       },
@@ -166,7 +180,7 @@ export async function GET(request: Request) {
 
     // Real Average AI Confidence
     const aiConfidenceAggregate = await prisma.email.aggregate({
-      where: { organizationId: orgId, aiConfidence: { gt: 0 } },
+      where: { organizationId: orgId, aiConfidence: { gt: 0 }, createdAt: { gte: since } },
       _avg: { aiConfidence: true }
     });
     const avgConfidence = aiConfidenceAggregate._avg.aiConfidence
@@ -182,6 +196,10 @@ export async function GET(request: Request) {
     // vendor/staff senders, never a real customer conversation) is excluded
     // here the same way it's excluded from the Inbox's default B2C/B2B/ALL
     // views, so it can't leak into this customer-facing category filter.
+    // NOT scoped to `since` -- this also feeds the Inbox page's Category
+    // filter dropdown counts (see businessTypeCounts below for the same
+    // reasoning), which must match what that page's own unscoped list query
+    // actually returns.
     const categoryGroup = await prisma.email.groupBy({
       by: ['category'],
       where: { organizationId: orgId, businessType: { not: 'INTERNAL' } },
@@ -211,7 +229,7 @@ export async function GET(request: Request) {
     // 3. Fetch Emails grouped by sentiment for charts
     const sentimentGroup = await prisma.email.groupBy({
       by: ['sentiment'],
-      where: { organizationId: orgId },
+      where: { organizationId: orgId, createdAt: { gte: since } },
       _count: { id: true },
     });
     const sentimentChart = sentimentGroup.map(g => ({
@@ -286,7 +304,7 @@ export async function GET(request: Request) {
     // 9. Top senders by email count
     const topSendersGroup = await prisma.email.groupBy({
       by: ['sender'],
-      where: { organizationId: orgId },
+      where: { organizationId: orgId, createdAt: { gte: since } },
       _count: { id: true },
       orderBy: { _count: { id: 'desc' } },
       take: 5,

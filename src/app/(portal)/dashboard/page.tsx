@@ -183,7 +183,7 @@ export default function DashboardPage() {
             Dashboard Overview
           </h1>
           <p className="text-text-secondary text-xs mt-1">
-            Monitor real StyleCraft US email sync and auto-reply dispatcher performance.
+            Monitor real StyleCraft US email sync and auto-reply dispatcher performance. Volume and performance metrics cover the last 60 days.
           </p>
         </div>
 
